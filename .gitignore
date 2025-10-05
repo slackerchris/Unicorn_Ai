@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Environment variables
+.env
+config/.env
+
+# Data and outputs
+data/conversations.db
+data/personas/*.json
+outputs/generated_images/*
+outputs/generated_voice/*
+outputs/logs/*
+
+# Keep directory structure
+!data/.gitkeep
+!outputs/logs/.gitkeep
+!outputs/generated_images/.gitkeep
+!outputs/generated_voice/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Models (too large)
+models/
+*.safetensors
+*.ckpt
+*.bin
+*.pth
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temp files
+*.tmp
+*.log
