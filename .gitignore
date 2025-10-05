@@ -42,6 +42,14 @@ models/
 *.bin
 *.pth
 
+# ComfyUI installation (downloaded, not in git)
+comfyui/
+!comfyui/.gitkeep
+
+# ComfyUI outputs
+outputs/generated_images/*
+!outputs/generated_images/.gitkeep
+
 # Testing
 .pytest_cache/
 .coverage
@@ -50,3 +58,7 @@ htmlcov/
 # Temp files
 *.tmp
 *.log
+
+# Generated voice messages
+outputs/voice_messages/*.mp3
+test_voice.mp3

@@ -1,6 +1,7 @@
 """
 Unicorn AI - Telegram Bot Interface
 Phase 2: Chat with Luna via Telegram
+Phase 4: Voice messages support
 """
 
 import os
@@ -32,6 +33,22 @@ if not TELEGRAM_BOT_TOKEN:
     print("Please follow TELEGRAM_SETUP.md to create your bot and get a token.")
     sys.exit(1)
 
+# Store user preferences (in production, this would be a database)
+user_preferences = {}
+
+
+def get_voice_mode(user_id: int) -> bool:
+    """Check if user has voice mode enabled"""
+    return user_preferences.get(user_id, {}).get("voice_mode", False)
+
+
+def set_voice_mode(user_id: int, enabled: bool):
+    """Set voice mode for a user"""
+    if user_id not in user_preferences:
+        user_preferences[user_id] = {}
+    user_preferences[user_id]["voice_mode"] = enabled
+    logger.info(f"User {user_id} voice mode: {enabled}")
+
 
 # Removed chat_with_api function - now handled inline in handle_message
 
@@ -49,16 +66,18 @@ I'm here to chat, listen, and keep you company. Just send me a message and I'll 
 /start - Show this welcome message
 /help - Get help
 /status - Check if I'm online
+/voice - Toggle voice messages 🎤
 
-**What I can do (so far):**
+**What I can do:**
 ✅ Have natural conversations with you
 ✅ Remember context within our chat
+✅ Send you voice messages (toggle with /voice)
+✅ Send you photos (when it makes sense)
 ✅ Be caring, fun, and supportive
 
 **Coming soon:**
-🔜 Send you photos
-🔜 Send you voice messages
 🔜 See photos you send me
+🔜 Remember your schedule
 
 Just start chatting! I'm excited to get to know you! 💕"""
     
@@ -115,12 +134,39 @@ Everything looks good! Send me a message! 💬"""
     await update.message.reply_text(status_text)
 
 
+async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /voice command - toggle voice messages"""
+    user = update.effective_user
+    current_mode = get_voice_mode(user.id)
+    new_mode = not current_mode
+    
+    set_voice_mode(user.id, new_mode)
+    
+    if new_mode:
+        message = f"""🎤 **Voice mode ON!**
+
+I'll send you voice messages now instead of text. You can still send me text messages though!
+
+To switch back to text: /voice"""
+    else:
+        message = f"""💬 **Text mode ON!**
+
+I'll send you regular text messages now.
+
+To switch back to voice: /voice"""
+    
+    await update.message.reply_text(message)
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle incoming text messages"""
     user = update.effective_user
     message_text = update.message.text
     
     logger.info(f"Message from {user.id} ({user.first_name}): {message_text[:50]}...")
+    
+    # Check if user has voice mode enabled
+    voice_mode = get_voice_mode(user.id)
     
     # Show typing indicator
     await update.message.chat.send_action(ChatAction.TYPING)
@@ -141,8 +187,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             logger.info(f"Response: {text_response[:50]}...")
             
-            # Send text response first
-            await update.message.reply_text(text_response)
+            # Clean text for voice (remove [IMAGE: ...] tags)
+            clean_text = text_response
+            if has_image:
+                import re
+                clean_text = re.sub(r'\[IMAGE:[^\]]+\]', '', text_response).strip()
+            
+            # Send response as voice or text
+            if voice_mode and clean_text:
+                logger.info("Sending voice message")
+                await update.message.chat.send_action(ChatAction.RECORD_VOICE)
+                
+                try:
+                    # Generate voice message
+                    voice_response = await client.post(
+                        f"{API_BASE_URL}/generate-voice",
+                        params={"text": clean_text}
+                    )
+                    voice_response.raise_for_status()
+                    voice_data = voice_response.content
+                    
+                    # Send voice message
+                    await update.message.reply_voice(voice=voice_data)
+                    logger.info("Voice message sent successfully")
+                    
+                except Exception as e:
+                    logger.error(f"Voice generation failed, falling back to text: {e}")
+                    await update.message.reply_text(text_response)
+            else:
+                # Send text response
+                await update.message.reply_text(text_response)
             
             # If there's an image, generate and send it
             if has_image and image_prompt:
@@ -203,6 +277,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("status", status_command))
+    application.add_handler(CommandHandler("voice", voice_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     # Add error handler

@@ -8,22 +8,25 @@ A fully self-hosted, uncensored AI companion that can:
 - Remember your calendar/schedule
 - Send proactive messages
 
-## Current Status: Phase 2 - Telegram Bot Interface
+## Current Status: Phase 4 - Voice Messages
 
 ### Features Implemented
 - ✅ Ollama with dolphin-mistral (uncensored text generation)
 - ✅ FastAPI backend with REST API
 - ✅ **Telegram bot interface - Chat from your phone!**
 - ✅ Natural conversations with personality
+- ✅ **Image generation support** (architecture ready, needs ComfyUI workflow)
+- ✅ **Voice messages** - Luna can send voice messages! 🎤
 - ✅ Real-time responses
 
 ### Roadmap
 - [x] Phase 1: Basic text chat ✅
 - [x] Phase 2: Telegram bot interface ✅
-- [ ] Phase 3: Image generation (ComfyUI + IPAdapter)
-- [ ] Phase 4: Voice synthesis (Coqui XTTS)
+- [x] Phase 3: Image generation (architecture complete) ⚠️
+- [x] Phase 4: Voice synthesis (TTS with Edge) ✅
 - [ ] Phase 5: Vision (see photos you send)
-- [ ] Phase 6: Advanced features (calendar, proactive messaging)
+- [ ] Phase 6: Web UI
+- [ ] Phase 7: Advanced features (calendar, proactive messaging)
 
 ## Hardware Requirements
 - GPU: 12GB+ VRAM (NVIDIA or AMD)

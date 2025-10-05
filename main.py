@@ -2,6 +2,7 @@
 Unicorn AI - Main Backend
 Phase 1: Basic text chat with Ollama
 Phase 3: Image generation support
+Phase 4: Voice messages (TTS)
 """
 
 import os
@@ -9,13 +10,14 @@ import re
 from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, FileResponse
 from pydantic import BaseModel
 import httpx
 from dotenv import load_dotenv
 from loguru import logger
 import sys
 from providers import ImageProviderManager
+from tts_service import TTSService
 
 # Load environment variables
 load_dotenv("config/.env")
@@ -51,6 +53,10 @@ PERSONA_DESCRIPTION = os.getenv("PERSONA_DESCRIPTION", "Your friendly, caring AI
 
 # Image generation
 image_manager = ImageProviderManager()
+
+# Voice generation (TTS)
+tts_voice = os.getenv("TTS_VOICE", "en-US-AriaNeural")
+tts_service = TTSService(voice=tts_voice)
 
 
 class ChatRequest(BaseModel):
@@ -215,6 +221,35 @@ async def generate_image(prompt: str, width: int = 512, height: int = 512):
     except Exception as e:
         logger.error(f"Image generation failed: {e}")
         raise HTTPException(status_code=500, detail=f"Image generation failed: {str(e)}")
+
+
+@app.post("/generate-voice")
+async def generate_voice(text: str):
+    """
+    Generate voice message from text using TTS.
+    
+    Example:
+        curl -X POST "http://localhost:8000/generate-voice?text=Hey%20there!" \
+          --output voice.mp3
+    """
+    logger.info(f"Voice generation requested: {text[:50]}...")
+    
+    try:
+        # Generate voice message
+        audio_path = await tts_service.text_to_speech(text)
+        
+        logger.info(f"Voice generated successfully: {audio_path}")
+        
+        # Return the audio file
+        return FileResponse(
+            audio_path,
+            media_type="audio/mpeg",
+            filename="voice_message.mp3"
+        )
+        
+    except Exception as e:
+        logger.error(f"Voice generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Voice generation failed: {str(e)}")
 
 
 @app.post("/chat", response_model=ChatResponse)
