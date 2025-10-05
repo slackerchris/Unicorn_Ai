@@ -8,18 +8,22 @@ A fully self-hosted, uncensored AI companion that can:
 - Remember your calendar/schedule
 - Send proactive messages
 
-## Current Status: Phase 1 - Basic Text Chat
+## Current Status: Phase 2 - Telegram Bot Interface
 
 ### Features Implemented
 - ✅ Ollama with dolphin-mistral (uncensored text generation)
-- ✅ FastAPI backend
-- ✅ Basic conversation endpoint
+- ✅ FastAPI backend with REST API
+- ✅ **Telegram bot interface - Chat from your phone!**
+- ✅ Natural conversations with personality
+- ✅ Real-time responses
 
 ### Roadmap
-- [ ] Phase 2: Image generation (ComfyUI + IPAdapter)
-- [ ] Phase 3: Voice synthesis (Coqui XTTS)
-- [ ] Phase 4: Interface (Telegram bot or Web UI)
-- [ ] Phase 5: Advanced features (calendar, proactive messaging, vision)
+- [x] Phase 1: Basic text chat ✅
+- [x] Phase 2: Telegram bot interface ✅
+- [ ] Phase 3: Image generation (ComfyUI + IPAdapter)
+- [ ] Phase 4: Voice synthesis (Coqui XTTS)
+- [ ] Phase 5: Vision (see photos you send)
+- [ ] Phase 6: Advanced features (calendar, proactive messaging)
 
 ## Hardware Requirements
 - GPU: 12GB+ VRAM (NVIDIA or AMD)
@@ -33,14 +37,35 @@ A fully self-hosted, uncensored AI companion that can:
 
 ## Quick Start
 
+### 1. Create Your Telegram Bot
+See [TELEGRAM_SETUP.md](TELEGRAM_SETUP.md) for detailed instructions.
+
+Quick version:
+1. Message @BotFather on Telegram
+2. Send `/newbot` and follow prompts
+3. Copy your bot token
+4. Add to `config/.env`: `TELEGRAM_BOT_TOKEN=your_token_here`
+
+### 2. Start Services
+
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+cd /home/chris/Documents/Git/Projects/Unicorn_Ai
 
-# Start the backend
-python main.py
+# Start everything (API + Telegram bot)
+./start_telegram.sh
 
-# Test with curl
+# Or start just the API for testing
+venv/bin/python main.py
+```
+
+### 3. Chat on Telegram!
+1. Open Telegram
+2. Search for your bot (the username you created)
+3. Send `/start`
+4. Start chatting!
+
+### Alternative: Test with curl
+```bash
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "Hello!"}'

@@ -12,8 +12,9 @@ aiohttp==3.9.1
 sqlalchemy==2.0.23
 aiosqlite==0.19.0
 
-# Future: Telegram Bot
-# python-telegram-bot==20.7
+# Telegram Bot
+python-telegram-bot==20.7
+requests==2.32.5
 
 # Future: Calendar Integration
 # google-api-python-client==2.108.0
