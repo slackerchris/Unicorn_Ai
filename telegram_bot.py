@@ -2,10 +2,12 @@
 Unicorn AI - Telegram Bot Interface
 Phase 2: Chat with Luna via Telegram
 Phase 4: Voice messages support
+Phase 5: Persona management
 """
 
 import os
 import asyncio
+from typing import Optional
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.constants import ChatAction
@@ -50,6 +52,19 @@ def set_voice_mode(user_id: int, enabled: bool):
     logger.info(f"User {user_id} voice mode: {enabled}")
 
 
+def get_user_persona(user_id: int) -> Optional[str]:
+    """Get the persona_id for a user (None means use default)"""
+    return user_preferences.get(user_id, {}).get("persona_id")
+
+
+def set_user_persona(user_id: int, persona_id: str):
+    """Set the persona for a user"""
+    if user_id not in user_preferences:
+        user_preferences[user_id] = {}
+    user_preferences[user_id]["persona_id"] = persona_id
+    logger.info(f"User {user_id} persona: {persona_id}")
+
+
 # Removed chat_with_api function - now handled inline in handle_message
 
 
@@ -67,12 +82,14 @@ I'm here to chat, listen, and keep you company. Just send me a message and I'll 
 /help - Get help
 /status - Check if I'm online
 /voice - Toggle voice messages 🎤
+/persona - Switch personalities 🎭
 
 **What I can do:**
 ✅ Have natural conversations with you
 ✅ Remember context within our chat
 ✅ Send you voice messages (toggle with /voice)
 ✅ Send you photos (when it makes sense)
+✅ Switch between different personalities (/persona)
 ✅ Be caring, fun, and supportive
 
 **Coming soon:**
@@ -158,6 +175,64 @@ To switch back to voice: /voice"""
     await update.message.reply_text(message)
 
 
+async def persona_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /persona command - list or switch personas"""
+    user = update.effective_user
+    
+    # If no argument, list available personas
+    if not context.args:
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(f"{API_BASE_URL}/personas")
+                response.raise_for_status()
+                personas = response.json()
+                
+                message = "🎭 **Available Personas:**\n\n"
+                for persona in personas:
+                    emoji = "⭐" if persona["is_current"] else "  "
+                    message += f"{emoji} **{persona['name']}** (`{persona['id']}`)\n"
+                    message += f"   {persona['description']}\n\n"
+                
+                message += "To switch persona: `/persona <id>`\n"
+                message += "Example: `/persona nova`"
+                
+                await update.message.reply_text(message)
+                
+        except Exception as e:
+            logger.error(f"Failed to fetch personas: {e}")
+            await update.message.reply_text("Sorry, I couldn't fetch the persona list 😅")
+    
+    else:
+        # Switch to specified persona
+        persona_id = context.args[0]
+        
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.post(f"{API_BASE_URL}/personas/{persona_id}/activate")
+                response.raise_for_status()
+                data = response.json()
+                
+                # Update user preference
+                set_user_persona(user.id, persona_id)
+                
+                message = f"""✅ **Persona Changed!**
+
+Now chatting with: **{data['persona']['name']}**
+
+Try talking to me - I'll respond in my new personality! 💫"""
+                
+                await update.message.reply_text(message)
+                
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                await update.message.reply_text(f"Persona '{persona_id}' not found. Use /persona to see available personas.")
+            else:
+                await update.message.reply_text("Sorry, I couldn't switch personas right now 😅")
+        except Exception as e:
+            logger.error(f"Failed to switch persona: {e}")
+            await update.message.reply_text("Sorry, something went wrong 😅")
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle incoming text messages"""
     user = update.effective_user
@@ -168,15 +243,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Check if user has voice mode enabled
     voice_mode = get_voice_mode(user.id)
     
+    # Get user's chosen persona (if any)
+    user_persona_id = get_user_persona(user.id)
+    
     # Show typing indicator
     await update.message.chat.send_action(ChatAction.TYPING)
     
     # Get response from API
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
+            # Build request payload
+            payload = {"message": message_text}
+            if user_persona_id:
+                payload["persona_id"] = user_persona_id
+            
             response = await client.post(
                 f"{API_BASE_URL}/chat",
-                json={"message": message_text}
+                json=payload
             )
             response.raise_for_status()
             data = response.json()
@@ -278,6 +361,7 @@ def main():
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("status", status_command))
     application.add_handler(CommandHandler("voice", voice_command))
+    application.add_handler(CommandHandler("persona", persona_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     # Add error handler

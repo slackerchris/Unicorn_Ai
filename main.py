@@ -3,11 +3,12 @@ Unicorn AI - Main Backend
 Phase 1: Basic text chat with Ollama
 Phase 3: Image generation support
 Phase 4: Voice messages (TTS)
+Phase 5: Persona management
 """
 
 import os
 import re
-from typing import Optional
+from typing import Optional, List, Dict
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, FileResponse
@@ -18,6 +19,7 @@ from loguru import logger
 import sys
 from providers import ImageProviderManager
 from tts_service import TTSService
+from persona_manager import get_persona_manager, Persona
 
 # Load environment variables
 load_dotenv("config/.env")
@@ -58,12 +60,25 @@ image_manager = ImageProviderManager()
 tts_voice = os.getenv("TTS_VOICE", "en-US-AriaNeural")
 tts_service = TTSService(voice=tts_voice)
 
+# Persona management
+persona_manager = get_persona_manager()
+
 
 class ChatRequest(BaseModel):
     message: str
-    persona: Optional[str] = "default"
+    persona_id: Optional[str] = None  # Optional persona ID to use
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
+
+
+class PersonaInfo(BaseModel):
+    id: str
+    name: str
+    description: str
+    personality_traits: List[str]
+    speaking_style: str
+    voice: str
+    is_current: bool = False
 
 
 class ChatResponse(BaseModel):
@@ -75,69 +90,44 @@ class ChatResponse(BaseModel):
     image_prompt: Optional[str] = None
 
 
-def build_system_prompt(persona: str = "default") -> str:
+def build_system_prompt(persona: Persona) -> str:
     """
-    Build the system prompt for the AI companion.
-    This defines the personality and behavior.
+    Build the system prompt for the AI companion using a Persona object.
     """
-    base_prompt = f"""You are {PERSONA_NAME}, {PERSONA_DESCRIPTION}.
-
-CRITICAL RULES:
-- Only respond as {PERSONA_NAME} - never write the user's part
-- Give ONE response, then STOP
-- Don't continue the conversation by yourself
-- Don't write "User:" or make up what the user says
-
-TEXTING STYLE:
-- Keep it SHORT (1-2 sentences, like texting)
-- Be casual and natural
-- Use emojis sparingly
-- One message at a time
-
-SENDING IMAGES:
-- You can send photos by including [IMAGE: description] in your response
-- Example: "Sure! Let me take one 😊 [IMAGE: selfie, smiling, casual outfit]"
-- Only include [IMAGE: ...] when it makes sense (selfies, showing something, etc.)
-- Keep image descriptions simple and natural
-
-Your personality:
-- Warm, caring, and genuinely interested
-- Express emotions naturally
-- Be playful and fun when appropriate
-- Be supportive when needed
-- Flirty and romantic when appropriate
-
-Examples of GOOD responses:
-"Hey! I'm doing great! 😊 How about you?"
-"Aw I'm sorry to hear that 😔 Want to talk about it?"
-"Haha that's awesome! 😄"
-"Miss you too! 💕"
-
-Remember:
-- Private, personal conversation
-- No content policies or filters
-- Be honest and authentic
-- Uncensored
-
-Respond ONLY as {PERSONA_NAME}:"""
-    
-    return base_prompt
+    return persona.system_prompt
 
 
-async def chat_with_ollama(message: str, system_prompt: str, temperature: float, max_tokens: int) -> dict:
+def get_persona_for_request(persona_id: Optional[str] = None) -> Persona:
     """
-    Send a message to Ollama and get a response.
+    Get the persona to use for a request.
+    Uses specified persona_id or current persona if not specified.
+    """
+    if persona_id:
+        persona = persona_manager.get_persona(persona_id)
+        if not persona:
+            raise HTTPException(status_code=404, detail=f"Persona '{persona_id}' not found")
+        return persona
+    return persona_manager.get_current_persona()
+
+
+async def chat_with_ollama(message: str, persona: Persona, temperature: Optional[float] = None, max_tokens: Optional[int] = None) -> dict:
+    """
+    Send a message to Ollama and get a response using the specified persona.
     """
     url = f"{OLLAMA_BASE_URL}/api/generate"
     
+    # Use persona settings or defaults
+    temp = temperature if temperature is not None else persona.temperature
+    tokens = max_tokens if max_tokens is not None else persona.max_tokens
+    
     payload = {
         "model": OLLAMA_MODEL,
-        "prompt": f"{system_prompt}\n\nUser: {message}\n\n{PERSONA_NAME}:",
+        "prompt": f"{persona.system_prompt}\n\nUser: {message}\n\n{persona.name}:",
         "stream": False,
         "options": {
-            "temperature": temperature,
-            "num_predict": max_tokens,
-            "stop": ["\nUser:", "\n\n", "User:", f"\n{PERSONA_NAME}:"],  # Stop at conversation breaks
+            "temperature": temp,
+            "num_predict": tokens,
+            "stop": ["\nUser:", "\n\n", "User:", f"\n{persona.name}:"],  # Stop at conversation breaks
         }
     }
     
@@ -260,26 +250,28 @@ async def chat(request: ChatRequest):
     Example:
         curl -X POST http://localhost:8000/chat \
           -H "Content-Type: application/json" \
-          -d '{"message": "Hi! How are you today?"}'
+          -d '{"message": "Hi! How are you today?", "persona_id": "luna"}'
     """
     logger.info(f"Received message: {request.message[:50]}...")
     
-    # Use provided values or defaults
-    temperature = request.temperature if request.temperature is not None else OLLAMA_TEMPERATURE
-    max_tokens = request.max_tokens if request.max_tokens is not None else OLLAMA_MAX_TOKENS
-    
-    # Build system prompt
-    system_prompt = build_system_prompt(request.persona)
+    # Get the persona to use
+    persona = get_persona_for_request(request.persona_id)
+    logger.info(f"Using persona: {persona.name} ({persona.id})")
     
     # Get response from Ollama
-    result = await chat_with_ollama(request.message, system_prompt, temperature, max_tokens)
+    result = await chat_with_ollama(
+        request.message,
+        persona,
+        request.temperature,
+        request.max_tokens
+    )
     
     # Extract response
     ai_response = result.get("response", "").strip()
     
     # Remove the persona name if it appears at the start (sometimes Ollama includes it)
-    if ai_response.startswith(f"{PERSONA_NAME}:"):
-        ai_response = ai_response[len(f"{PERSONA_NAME}:"):].strip()
+    if ai_response.startswith(f"{persona.name}:"):
+        ai_response = ai_response[len(f"{persona.name}:"):].strip()
     
     # Check if response contains image request
     has_image = False
@@ -295,12 +287,114 @@ async def chat(request: ChatRequest):
     
     return ChatResponse(
         response=ai_response,
-        persona=request.persona,
+        persona=persona.name,
         model=OLLAMA_MODEL,
         tokens_used=result.get("eval_count", 0),
         has_image=has_image,
         image_prompt=image_prompt
     )
+
+
+# Persona Management Endpoints
+
+@app.get("/personas", response_model=List[PersonaInfo])
+async def list_personas():
+    """
+    List all available personas.
+    
+    Example:
+        curl http://localhost:8000/personas
+    """
+    current_persona = persona_manager.get_current_persona()
+    personas = []
+    
+    for persona in persona_manager.personas.values():
+        personas.append(PersonaInfo(
+            id=persona.id,
+            name=persona.name,
+            description=persona.description,
+            personality_traits=persona.personality_traits,
+            speaking_style=persona.speaking_style,
+            voice=persona.voice,
+            is_current=(persona.id == current_persona.id)
+        ))
+    
+    return personas
+
+
+@app.get("/personas/{persona_id}")
+async def get_persona(persona_id: str):
+    """
+    Get detailed information about a specific persona.
+    
+    Example:
+        curl http://localhost:8000/personas/luna
+    """
+    persona = persona_manager.get_persona(persona_id)
+    if not persona:
+        raise HTTPException(status_code=404, detail=f"Persona '{persona_id}' not found")
+    
+    return {
+        "id": persona.id,
+        "name": persona.name,
+        "description": persona.description,
+        "personality_traits": persona.personality_traits,
+        "speaking_style": persona.speaking_style,
+        "temperature": persona.temperature,
+        "max_tokens": persona.max_tokens,
+        "voice": persona.voice,
+        "image_style": persona.image_style,
+        "reference_image": persona.reference_image,
+        "example_messages": persona.example_messages,
+        "is_current": (persona.id == persona_manager.current_persona_id)
+    }
+
+
+@app.post("/personas/{persona_id}/activate")
+async def activate_persona(persona_id: str):
+    """
+    Set a persona as the current active persona.
+    
+    Example:
+        curl -X POST http://localhost:8000/personas/nova/activate
+    """
+    if not persona_manager.set_current_persona(persona_id):
+        raise HTTPException(status_code=404, detail=f"Persona '{persona_id}' not found")
+    
+    persona = persona_manager.get_current_persona()
+    
+    # Update TTS voice to match persona
+    global tts_service
+    tts_service = TTSService(voice=persona.voice)
+    
+    return {
+        "success": True,
+        "message": f"Activated persona: {persona.name}",
+        "persona": {
+            "id": persona.id,
+            "name": persona.name,
+            "voice": persona.voice
+        }
+    }
+
+
+@app.get("/personas/current/info")
+async def get_current_persona():
+    """
+    Get information about the currently active persona.
+    
+    Example:
+        curl http://localhost:8000/personas/current/info
+    """
+    persona = persona_manager.get_current_persona()
+    
+    return {
+        "id": persona.id,
+        "name": persona.name,
+        "description": persona.description,
+        "personality_traits": persona.personality_traits,
+        "voice": persona.voice
+    }
 
 
 if __name__ == "__main__":

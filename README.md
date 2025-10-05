@@ -8,7 +8,7 @@ A fully self-hosted, uncensored AI companion that can:
 - Remember your calendar/schedule
 - Send proactive messages
 
-## Current Status: Phase 4 - Voice Messages
+## Current Status: Phase 5 - Persona Management
 
 ### Features Implemented
 - ✅ Ollama with dolphin-mistral (uncensored text generation)
@@ -16,7 +16,8 @@ A fully self-hosted, uncensored AI companion that can:
 - ✅ **Telegram bot interface - Chat from your phone!**
 - ✅ Natural conversations with personality
 - ✅ **Image generation support** (architecture ready, needs ComfyUI workflow)
-- ✅ **Voice messages** - Luna can send voice messages! 🎤
+- ✅ **Voice messages** - AI can send voice messages! 🎤
+- ✅ **Multiple Personas** - Switch between Luna, Nova, Sage, and Alex! 🎭
 - ✅ Real-time responses
 
 ### Roadmap
@@ -24,9 +25,10 @@ A fully self-hosted, uncensored AI companion that can:
 - [x] Phase 2: Telegram bot interface ✅
 - [x] Phase 3: Image generation (architecture complete) ⚠️
 - [x] Phase 4: Voice synthesis (TTS with Edge) ✅
-- [ ] Phase 5: Vision (see photos you send)
-- [ ] Phase 6: Web UI
-- [ ] Phase 7: Advanced features (calendar, proactive messaging)
+- [x] Phase 5: Persona management (4 default personas) ✅
+- [ ] Phase 6: Vision (see photos you send)
+- [ ] Phase 7: Web UI
+- [ ] Phase 8: Advanced features (calendar, proactive messaging)
 
 ## Hardware Requirements
 - GPU: 12GB+ VRAM (NVIDIA or AMD)
