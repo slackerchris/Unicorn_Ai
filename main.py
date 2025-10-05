@@ -1,17 +1,21 @@
 """
 Unicorn AI - Main Backend
 Phase 1: Basic text chat with Ollama
+Phase 3: Image generation support
 """
 
 import os
+import re
 from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 import httpx
 from dotenv import load_dotenv
 from loguru import logger
 import sys
+from providers import ImageProviderManager
 
 # Load environment variables
 load_dotenv("config/.env")
@@ -45,6 +49,9 @@ OLLAMA_MAX_TOKENS = int(os.getenv("OLLAMA_MAX_TOKENS", "150"))  # Reduced for sh
 PERSONA_NAME = os.getenv("PERSONA_NAME", "Luna")
 PERSONA_DESCRIPTION = os.getenv("PERSONA_DESCRIPTION", "Your friendly, caring AI companion")
 
+# Image generation
+image_manager = ImageProviderManager()
+
 
 class ChatRequest(BaseModel):
     message: str
@@ -58,6 +65,8 @@ class ChatResponse(BaseModel):
     persona: str
     model: str
     tokens_used: Optional[int] = None
+    has_image: bool = False
+    image_prompt: Optional[str] = None
 
 
 def build_system_prompt(persona: str = "default") -> str:
@@ -78,6 +87,12 @@ TEXTING STYLE:
 - Be casual and natural
 - Use emojis sparingly
 - One message at a time
+
+SENDING IMAGES:
+- You can send photos by including [IMAGE: description] in your response
+- Example: "Sure! Let me take one 😊 [IMAGE: selfie, smiling, casual outfit]"
+- Only include [IMAGE: ...] when it makes sense (selfies, showing something, etc.)
+- Keep image descriptions simple and natural
 
 Your personality:
 - Warm, caring, and genuinely interested
@@ -171,6 +186,37 @@ async def health_check():
     }
 
 
+@app.post("/generate-image")
+async def generate_image(prompt: str, width: int = 512, height: int = 512):
+    """
+    Generate an image from a text prompt.
+    
+    Example:
+        curl -X POST "http://localhost:8000/generate-image?prompt=beautiful+woman+selfie"
+    """
+    logger.info(f"Image generation requested: {prompt}")
+    
+    try:
+        # Build character-consistent prompt
+        character_prompt = f"{PERSONA_NAME}, {PERSONA_DESCRIPTION}, {prompt}"
+        
+        # Generate image
+        image_data = await image_manager.generate_image(
+            prompt=character_prompt,
+            negative_prompt="ugly, deformed, blurry, low quality",
+            width=width,
+            height=height
+        )
+        
+        logger.info("Image generated successfully")
+        
+        return Response(content=image_data, media_type="image/png")
+        
+    except Exception as e:
+        logger.error(f"Image generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Image generation failed: {str(e)}")
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """
@@ -200,13 +246,25 @@ async def chat(request: ChatRequest):
     if ai_response.startswith(f"{PERSONA_NAME}:"):
         ai_response = ai_response[len(f"{PERSONA_NAME}:"):].strip()
     
+    # Check if response contains image request
+    has_image = False
+    image_prompt = None
+    image_match = re.search(r'\[IMAGE:\s*([^\]]+)\]', ai_response, re.IGNORECASE)
+    
+    if image_match:
+        has_image = True
+        image_prompt = image_match.group(1).strip()
+        logger.info(f"Image requested: {image_prompt}")
+    
     logger.info(f"Sending response: {ai_response[:50]}...")
     
     return ChatResponse(
         response=ai_response,
         persona=request.persona,
         model=OLLAMA_MODEL,
-        tokens_used=result.get("eval_count", 0)
+        tokens_used=result.get("eval_count", 0),
+        has_image=has_image,
+        image_prompt=image_prompt
     )
 
 

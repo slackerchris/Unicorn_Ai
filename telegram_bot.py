@@ -33,23 +33,7 @@ if not TELEGRAM_BOT_TOKEN:
     sys.exit(1)
 
 
-async def chat_with_api(message: str) -> str:
-    """Send message to the FastAPI backend and get response"""
-    url = f"{API_BASE_URL}/chat"
-    payload = {"message": message}
-    
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(url, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            return data["response"]
-    except httpx.HTTPError as e:
-        logger.error(f"API error: {e}")
-        return "Sorry, I'm having trouble thinking right now. Can you try again? 🤔"
-    except Exception as e:
-        logger.error(f"Unexpected error: {e}")
-        return "Oops, something went wrong on my end. Try again in a moment? 😅"
+# Removed chat_with_api function - now handled inline in handle_message
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -142,12 +126,58 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.chat.send_action(ChatAction.TYPING)
     
     # Get response from API
-    response = await chat_with_api(message_text)
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"{API_BASE_URL}/chat",
+                json={"message": message_text}
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            text_response = data["response"]
+            has_image = data.get("has_image", False)
+            image_prompt = data.get("image_prompt")
+            
+            logger.info(f"Response: {text_response[:50]}...")
+            
+            # Send text response first
+            await update.message.reply_text(text_response)
+            
+            # If there's an image, generate and send it
+            if has_image and image_prompt:
+                logger.info(f"Generating image: {image_prompt}")
+                await update.message.chat.send_action(ChatAction.UPLOAD_PHOTO)
+                
+                try:
+                    # Generate image
+                    img_response = await client.post(
+                        f"{API_BASE_URL}/generate-image",
+                        params={"prompt": image_prompt}
+                    )
+                    img_response.raise_for_status()
+                    image_data = img_response.content
+                    
+                    # Send image
+                    await update.message.reply_photo(photo=image_data)
+                    logger.info("Image sent successfully")
+                    
+                except Exception as e:
+                    logger.error(f"Image generation failed: {e}")
+                    await update.message.reply_text(
+                        "Sorry, I couldn't generate the image right now 😅"
+                    )
     
-    logger.info(f"Response sent: {response[:50]}...")
-    
-    # Send response
-    await update.message.reply_text(response)
+    except httpx.HTTPError as e:
+        logger.error(f"API error: {e}")
+        await update.message.reply_text(
+            "Sorry, I'm having trouble thinking right now. Can you try again? 🤔"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        await update.message.reply_text(
+            "Oops, something went wrong on my end. Try again in a moment? 😅"
+        )
 
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
