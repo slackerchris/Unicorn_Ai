@@ -11,7 +11,8 @@ import re
 from typing import Optional, List, Dict
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, FileResponse
+from fastapi.responses import Response, FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import httpx
 from dotenv import load_dotenv
@@ -33,10 +34,13 @@ logger.add("outputs/logs/unicorn_ai.log", rotation="10 MB", retention="7 days", 
 app = FastAPI(
     title="Unicorn AI",
     description="Self-hosted AI companion with text, images, and voice",
-    version="0.1.0 - Phase 1"
+    version="0.6.0 - Phase 6: Web UI"
 )
 
-# CORS for future web UI
+# Mount static files for Web UI
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# CORS for Web UI
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -47,21 +51,18 @@ app.add_middleware(
 
 # Configuration
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "dolphin-mistral")
-OLLAMA_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0.8"))
-OLLAMA_MAX_TOKENS = int(os.getenv("OLLAMA_MAX_TOKENS", "150"))  # Reduced for shorter messages
-PERSONA_NAME = os.getenv("PERSONA_NAME", "Luna")
-PERSONA_DESCRIPTION = os.getenv("PERSONA_DESCRIPTION", "Your friendly, caring AI companion")
+# Note: Model, temperature, and tokens are now persona-specific
+# Each persona can use different settings
 
 # Image generation
 image_manager = ImageProviderManager()
 
-# Voice generation (TTS)
-tts_voice = os.getenv("TTS_VOICE", "en-US-AriaNeural")
-tts_service = TTSService(voice=tts_voice)
-
-# Persona management
+# Persona management (must be initialized first)
 persona_manager = get_persona_manager()
+
+# Voice generation (TTS) - will be dynamically updated based on active persona
+current_persona = persona_manager.get_current_persona()
+tts_service = TTSService(voice=current_persona.voice)
 
 
 class ChatRequest(BaseModel):
@@ -77,8 +78,21 @@ class PersonaInfo(BaseModel):
     description: str
     personality_traits: List[str]
     speaking_style: str
+    model: str  # LLM model used by this persona
     voice: str
     is_current: bool = False
+
+
+class CreatePersonaRequest(BaseModel):
+    id: str
+    name: str
+    description: str
+    personality_traits: List[str]
+    speaking_style: str
+    temperature: Optional[float] = 0.8
+    max_tokens: Optional[int] = 150
+    voice: Optional[str] = "en-US-AriaNeural"
+    model: Optional[str] = "dolphin-mistral:latest"
 
 
 class ChatResponse(BaseModel):
@@ -113,15 +127,17 @@ def get_persona_for_request(persona_id: Optional[str] = None) -> Persona:
 async def chat_with_ollama(message: str, persona: Persona, temperature: Optional[float] = None, max_tokens: Optional[int] = None) -> dict:
     """
     Send a message to Ollama and get a response using the specified persona.
+    Each persona can use a different LLM model based on their role.
     """
     url = f"{OLLAMA_BASE_URL}/api/generate"
     
     # Use persona settings or defaults
     temp = temperature if temperature is not None else persona.temperature
     tokens = max_tokens if max_tokens is not None else persona.max_tokens
+    model = persona.model  # Each persona can use a different LLM!
     
     payload = {
-        "model": OLLAMA_MODEL,
+        "model": model,
         "prompt": f"{persona.system_prompt}\n\nUser: {message}\n\n{persona.name}:",
         "stream": False,
         "options": {
@@ -130,6 +146,8 @@ async def chat_with_ollama(message: str, persona: Persona, temperature: Optional
             "stop": ["\nUser:", "\n\n", "User:", f"\n{persona.name}:"],  # Stop at conversation breaks
         }
     }
+    
+    logger.info(f"Using model '{model}' for persona '{persona.name}'")  # Log which model is being used
     
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -151,22 +169,29 @@ async def chat_with_ollama(message: str, persona: Persona, temperature: Optional
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 
-@app.get("/")
-async def root():
-    """Health check endpoint"""
+@app.get("/api/status")
+async def api_status():
+    """API status endpoint"""
+    current_persona = persona_manager.get_current_persona()
     return {
         "status": "online",
         "service": "Unicorn AI",
-        "version": "0.1.0",
-        "phase": "1 - Basic Text Chat",
-        "model": OLLAMA_MODEL,
-        "persona": PERSONA_NAME
+        "version": "0.6.0",
+        "phase": "6 - Web UI with Custom Personas",
+        "current_persona": {
+            "id": current_persona.id,
+            "name": current_persona.name,
+            "model": current_persona.model
+        },
+        "total_personas": len(persona_manager.personas)
     }
 
 
 @app.get("/health")
 async def health_check():
     """Detailed health check including Ollama status"""
+    current_persona = persona_manager.get_current_persona()
+    
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
@@ -177,24 +202,32 @@ async def health_check():
     return {
         "api": "online",
         "ollama": ollama_status,
-        "model": OLLAMA_MODEL,
-        "persona": PERSONA_NAME
+        "current_persona": {
+            "id": current_persona.id,
+            "name": current_persona.name,
+            "model": current_persona.model
+        }
     }
 
 
 @app.post("/generate-image")
-async def generate_image(prompt: str, width: int = 512, height: int = 512):
+async def generate_image(prompt: str, width: int = 512, height: int = 512, persona_id: Optional[str] = None):
     """
-    Generate an image from a text prompt.
+    Generate an image from a text prompt using current or specified persona's style.
     
     Example:
         curl -X POST "http://localhost:8000/generate-image?prompt=beautiful+woman+selfie"
     """
     logger.info(f"Image generation requested: {prompt}")
     
+    # Get persona for character-consistent generation
+    persona = get_persona_for_request(persona_id)
+    
     try:
-        # Build character-consistent prompt
-        character_prompt = f"{PERSONA_NAME}, {PERSONA_DESCRIPTION}, {prompt}"
+        # Build character-consistent prompt using persona details
+        character_prompt = f"{persona.name}, {persona.description}, {prompt}"
+        if persona.image_style:
+            character_prompt += f", {persona.image_style}"
         
         # Generate image
         image_data = await image_manager.generate_image(
@@ -204,7 +237,7 @@ async def generate_image(prompt: str, width: int = 512, height: int = 512):
             height=height
         )
         
-        logger.info("Image generated successfully")
+        logger.info(f"Image generated successfully for persona: {persona.name}")
         
         return Response(content=image_data, media_type="image/png")
         
@@ -288,7 +321,7 @@ async def chat(request: ChatRequest):
     return ChatResponse(
         response=ai_response,
         persona=persona.name,
-        model=OLLAMA_MODEL,
+        model=persona.model,
         tokens_used=result.get("eval_count", 0),
         has_image=has_image,
         image_prompt=image_prompt
@@ -297,7 +330,7 @@ async def chat(request: ChatRequest):
 
 # Persona Management Endpoints
 
-@app.get("/personas", response_model=List[PersonaInfo])
+@app.get("/personas")
 async def list_personas():
     """
     List all available personas.
@@ -309,17 +342,30 @@ async def list_personas():
     personas = []
     
     for persona in persona_manager.personas.values():
-        personas.append(PersonaInfo(
-            id=persona.id,
-            name=persona.name,
-            description=persona.description,
-            personality_traits=persona.personality_traits,
-            speaking_style=persona.speaking_style,
-            voice=persona.voice,
-            is_current=(persona.id == current_persona.id)
-        ))
+        personas.append({
+            "id": persona.id,
+            "name": persona.name,
+            "description": persona.description,
+            "personality_traits": persona.personality_traits,
+            "speaking_style": persona.speaking_style,
+            "model": persona.model,
+            "voice": persona.voice,
+            "is_current": (persona.id == current_persona.id)
+        })
     
-    return personas
+    return {
+        "personas": personas,
+        "current": {
+            "id": current_persona.id,
+            "name": current_persona.name,
+            "description": current_persona.description,
+            "personality_traits": current_persona.personality_traits,
+            "speaking_style": current_persona.speaking_style,
+            "model": current_persona.model,
+            "voice": current_persona.voice,
+            "is_current": True
+        }
+    }
 
 
 @app.get("/personas/{persona_id}")
@@ -397,14 +443,113 @@ async def get_current_persona():
     }
 
 
+@app.post("/personas/create")
+async def create_persona_endpoint(request: CreatePersonaRequest):
+    """
+    Create a new custom persona.
+    
+    Example:
+        curl -X POST http://localhost:8000/personas/create \
+          -H "Content-Type: application/json" \
+          -d '{
+            "id": "custom",
+            "name": "Custom",
+            "description": "My custom persona",
+            "personality_traits": ["friendly", "helpful"],
+            "speaking_style": "casual and warm",
+            "temperature": 0.8,
+            "voice": "en-US-AriaNeural"
+          }'
+    """
+    try:
+        persona = persona_manager.create_persona(
+            persona_id=request.id,
+            name=request.name,
+            description=request.description,
+            personality_traits=request.personality_traits,
+            speaking_style=request.speaking_style,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+            voice=request.voice,
+            model=request.model
+        )
+        
+        logger.info(f"Created new persona: {persona.name} ({persona.id})")
+        
+        return {
+            "success": True,
+            "message": f"Created persona: {persona.name}",
+            "persona": {
+                "id": persona.id,
+                "name": persona.name,
+                "description": persona.description,
+                "personality_traits": persona.personality_traits,
+                "speaking_style": persona.speaking_style,
+                "voice": persona.voice,
+                "temperature": persona.temperature,
+                "max_tokens": persona.max_tokens
+            }
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to create persona: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create persona")
+
+
+@app.delete("/personas/{persona_id}")
+async def delete_persona_endpoint(persona_id: str):
+    """
+    Delete a persona.
+    
+    Example:
+        curl -X DELETE http://localhost:8000/personas/custom
+    """
+    # Prevent deletion of default personas
+    if persona_id in ["luna", "nova", "sage", "alex"]:
+        raise HTTPException(status_code=400, detail="Cannot delete default personas")
+    
+    try:
+        success = persona_manager.delete_persona(persona_id)
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Persona '{persona_id}' not found")
+        
+        return {
+            "success": True,
+            "message": f"Deleted persona: {persona_id}"
+        }
+    except Exception as e:
+        logger.error(f"Failed to delete persona: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete persona")
+
+
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    """
+    Serve the Web UI - Phase 6!
+    """
+    try:
+        with open("static/index.html", "r") as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        return HTMLResponse(
+            content="<h1>Unicorn AI</h1><p>Web UI not found. Make sure static/index.html exists.</p>",
+            status_code=404
+        )
+
+
 if __name__ == "__main__":
     import uvicorn
     
     host = os.getenv("API_HOST", "0.0.0.0")
     port = int(os.getenv("API_PORT", "8000"))
     
-    logger.info(f"Starting Unicorn AI on {host}:{port}")
-    logger.info(f"Model: {OLLAMA_MODEL}")
-    logger.info(f"Persona: {PERSONA_NAME}")
+    current_persona = persona_manager.get_current_persona()
+    
+    logger.info(f"🦄 Starting Unicorn AI on {host}:{port}")
+    logger.info(f"📊 Loaded {len(persona_manager.personas)} personas")
+    logger.info(f"🎭 Current persona: {current_persona.name} (Model: {current_persona.model})")
+    logger.info(f"🌐 Web UI: http://localhost:{port}")
+    logger.info(f"📚 API Docs: http://localhost:{port}/docs")
     
     uvicorn.run(app, host=host, port=port, log_level="info")

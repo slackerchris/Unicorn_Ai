@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug - Unicorn AI</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #00ff00;
+        }
+        .error { color: #ff0000; border-color: #ff0000; }
+        .success { color: #00ff00; border-color: #00ff00; }
+        .warning { color: #ffaa00; border-color: #ffaa00; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Unicorn AI Debug Page</h1>
+    <div id="results"></div>
+
+    <script>
+        const results = document.getElementById('results');
+        
+        function addStatus(message, type = 'status') {
+            const div = document.createElement('div');
+            div.className = `status ${type}`;
+            div.textContent = message;
+            results.appendChild(div);
+        }
+
+        // Test 1: Check if script loaded
+        addStatus('✅ JavaScript is loading and executing', 'success');
+        
+        // Test 2: Check API connectivity
+        addStatus('Testing API connectivity...', 'warning');
+        fetch('http://localhost:8000/health')
+            .then(res => res.json())
+            .then(data => {
+                addStatus(`✅ API Health: ${JSON.stringify(data)}`, 'success');
+            })
+            .catch(err => {
+                addStatus(`❌ API Error: ${err.message}`, 'error');
+            });
+        
+        // Test 3: Check personas endpoint
+        addStatus('Testing personas endpoint...', 'warning');
+        fetch('http://localhost:8000/personas')
+            .then(res => res.json())
+            .then(data => {
+                addStatus(`✅ Personas loaded: ${data.personas.length} personas`, 'success');
+                addStatus(`   Current: ${data.current.name} (${data.current.id})`, 'success');
+            })
+            .catch(err => {
+                addStatus(`❌ Personas Error: ${err.message}`, 'error');
+            });
+        
+        // Test 4: Check main app.js loads
+        addStatus('Checking if app.js is accessible...', 'warning');
+        fetch('/static/app.js?v=5')
+            .then(res => {
+                addStatus(`✅ app.js status: ${res.status} (${res.statusText})`, 'success');
+                addStatus(`   Size: ${res.headers.get('content-length')} bytes`, 'success');
+                return res.text();
+            })
+            .then(text => {
+                if (text.includes('class UnicornAI')) {
+                    addStatus('✅ app.js contains UnicornAI class', 'success');
+                } else {
+                    addStatus('❌ app.js does NOT contain UnicornAI class!', 'error');
+                }
+            })
+            .catch(err => {
+                addStatus(`❌ app.js load error: ${err.message}`, 'error');
+            });
+        
+        // Test 5: Check if main page elements exist
+        addStatus('Testing main page...', 'warning');
+        fetch('/')
+            .then(res => res.text())
+            .then(html => {
+                const checks = [
+                    { test: html.includes('personaSelector'), name: 'personaSelector ID' },
+                    { test: html.includes('chatMessages'), name: 'chatMessages ID' },
+                    { test: html.includes('messageInput'), name: 'messageInput ID' },
+                    { test: html.includes('/static/app.js?v=5'), name: 'app.js v=5 reference' },
+                    { test: html.includes('/static/style.css?v=5'), name: 'style.css v=5 reference' }
+                ];
+                
+                checks.forEach(check => {
+                    if (check.test) {
+                        addStatus(`✅ Found: ${check.name}`, 'success');
+                    } else {
+                        addStatus(`❌ Missing: ${check.name}`, 'error');
+                    }
+                });
+            })
+            .catch(err => {
+                addStatus(`❌ Main page error: ${err.message}`, 'error');
+            });
+        
+        // Test 6: Browser info
+        addStatus('─────────────────────────', 'status');
+        addStatus(`Browser: ${navigator.userAgent}`, 'status');
+        addStatus(`Cookies enabled: ${navigator.cookieEnabled}`, 'status');
+        addStatus(`Local storage: ${typeof(Storage) !== "undefined" ? 'Available' : 'Not available'}`, 'status');
+    </script>
+</body>
+</html>

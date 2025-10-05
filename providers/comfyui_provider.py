@@ -96,7 +96,7 @@ class ComfyUIProvider(ImageProvider):
     async def _wait_for_image(self, client: httpx.AsyncClient, prompt_id: str) -> bytes:
         """Wait for ComfyUI to finish and retrieve the image"""
         
-        max_attempts = 120  # 2 minutes max
+        max_attempts = 300  # 5 minutes max (CPU generation can take 3+ minutes)
         
         for attempt in range(max_attempts):
             await asyncio.sleep(1)

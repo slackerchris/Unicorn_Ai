@@ -21,6 +21,7 @@ class Persona:
     speaking_style: str
     temperature: float = 0.8
     max_tokens: int = 150
+    model: str = "dolphin-mistral:latest"  # LLM model for this persona
     system_prompt: str = ""
     example_messages: List[str] = None
     voice: str = "en-US-AriaNeural"
@@ -115,6 +116,7 @@ class PersonaManager:
             speaking_style="Casual and natural, like texting a close friend. Uses emojis occasionally but not excessively.",
             temperature=0.8,
             max_tokens=150,
+            model="dolphin-mistral:latest",  # Good for conversational, emotional responses
             voice="en-US-AriaNeural",
             image_style="photorealistic, young woman, casual style, friendly expression",
             example_messages=[
@@ -139,6 +141,7 @@ class PersonaManager:
             speaking_style="Clear and concise. Gets to the point quickly. Minimal emojis.",
             temperature=0.7,
             max_tokens=200,
+            model="dolphin-mistral:latest",  # Can be changed to codellama or deepseek-coder for technical tasks
             voice="en-US-JennyNeural",
             image_style="professional, intelligent look, modern style",
             example_messages=[
@@ -163,6 +166,7 @@ class PersonaManager:
             speaking_style="Thoughtful and measured. Uses metaphors and deeper insights.",
             temperature=0.9,
             max_tokens=250,
+            model="dolphin-mistral:latest",  # Can be changed to nous-hermes or mixtral for reasoning
             voice="en-GB-SoniaNeural",
             image_style="mature, wise appearance, serene expression",
             example_messages=[
@@ -187,6 +191,7 @@ class PersonaManager:
             speaking_style="Upbeat and energetic! Uses lots of exclamation marks and emojis! 🎉",
             temperature=0.9,
             max_tokens=150,
+            model="dolphin-mistral:latest",  # Can use smaller/faster model for quick responses
             voice="en-US-AvaNeural",
             image_style="energetic, casual sporty style, big smile",
             example_messages=[
