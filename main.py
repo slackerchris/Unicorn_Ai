@@ -927,6 +927,43 @@ async def delete_ollama_model(model_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/comfyui/restart")
+async def restart_comfyui():
+    """
+    Restart ComfyUI service.
+    
+    Example:
+        curl -X POST http://localhost:8000/comfyui/restart
+    """
+    try:
+        import subprocess
+        
+        logger.info("Restarting ComfyUI...")
+        
+        # Use the service.sh script to restart ComfyUI
+        result = subprocess.run(
+            ["./service.sh", "restart", "comfyui"],
+            capture_output=True,
+            text=True,
+            cwd=os.path.dirname(os.path.abspath(__file__))
+        )
+        
+        if result.returncode == 0:
+            logger.info("ComfyUI restarted successfully")
+            return {
+                "success": True,
+                "message": "ComfyUI restarted successfully"
+            }
+        else:
+            error_msg = result.stderr or result.stdout or "Unknown error"
+            logger.error(f"Failed to restart ComfyUI: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"Failed to restart ComfyUI: {error_msg}")
+            
+    except Exception as e:
+        logger.error(f"Error restarting ComfyUI: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==========================================
 # HUGGING FACE INTEGRATION
 # ==========================================

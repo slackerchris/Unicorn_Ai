@@ -31,9 +31,14 @@ show_help() {
 check_service() {
     case $1 in
         api)
-            ps aux | grep "python main.py" | grep -v comfyui | grep -v grep > /dev/null && echo "✅ Running" || echo "❌ Stopped"
+            # Check for main.py in Unicorn_Ai directory (not comfyui subdirectory)
+            pgrep -f "python main.py" | while read pid; do
+                pwdx $pid 2>/dev/null | grep -q "Unicorn_Ai$" && ! pwdx $pid 2>/dev/null | grep -q "comfyui" && echo "✅ Running" && exit 0
+            done
+            [ $? -eq 0 ] || echo "❌ Stopped"
             ;;
         comfyui)
+            # Check for main.py with --port 8188
             ps aux | grep "python main.py.*8188" | grep -v grep > /dev/null && echo "✅ Running" || echo "❌ Stopped"
             ;;
         tts)

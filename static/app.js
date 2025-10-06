@@ -299,6 +299,7 @@ class UnicornAI {
         
         // Model Manager modal
         this.downloadModelBtn.addEventListener('click', () => this.downloadModel());
+        document.getElementById('restartComfyuiBtn').addEventListener('click', () => this.restartComfyUI());
         this.modelManagerModal.querySelector('.close-modal').addEventListener('click', () => this.closeModelManager());
         this.modelManagerModal.addEventListener('click', (e) => {
             if (e.target === this.modelManagerModal) {
@@ -1720,6 +1721,44 @@ class UnicornAI {
         } catch (error) {
             console.error('Error deleting model:', error);
             this.showError('Failed to delete model: ' + error.message);
+        }
+    }
+    
+    async restartComfyUI() {
+        const btn = document.getElementById('restartComfyuiBtn');
+        const originalHTML = btn.innerHTML;
+        
+        if (!confirm('Restart ComfyUI?\n\nThis will temporarily stop image generation while ComfyUI restarts (about 10 seconds).')) {
+            return;
+        }
+        
+        try {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Restarting...';
+            
+            const response = await fetch(`${this.apiBase}/comfyui/restart`, {
+                method: 'POST'
+            });
+            
+            if (!response.ok) throw new Error('Failed to restart ComfyUI');
+            
+            const data = await response.json();
+            this.addSystemMessage('🔄 ComfyUI restarted successfully');
+            
+            // Wait a bit for ComfyUI to fully start
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            
+            btn.innerHTML = '<i class="fas fa-check"></i> Restarted!';
+            setTimeout(() => {
+                btn.innerHTML = originalHTML;
+                btn.disabled = false;
+            }, 2000);
+            
+        } catch (error) {
+            console.error('Error restarting ComfyUI:', error);
+            this.showError('Failed to restart ComfyUI: ' + error.message);
+            btn.innerHTML = originalHTML;
+            btn.disabled = false;
         }
     }
     
