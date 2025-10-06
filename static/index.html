@@ -486,6 +486,25 @@
 
                 <hr style="margin: 25px 0; border: none; border-top: 1px solid var(--border-color);">
 
+                <!-- Hugging Face Browser Section -->
+                <div class="setting-group">
+                    <h3>🤗 Hugging Face Models (GGUF)</h3>
+                    <p class="setting-description">Search and import GGUF models directly from Hugging Face</p>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <input type="text" id="hfSearchInput" class="text-input" placeholder="Search for GGUF models (e.g., llama, mistral, phi)" style="flex: 1;">
+                        <button class="btn btn-primary" id="hfSearchBtn">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                    </div>
+                    <div id="hfSearchResults" style="margin-top: 15px; display: none;">
+                        <div id="hfResultsList" style="max-height: 300px; overflow-y: auto;">
+                            <!-- Search results will appear here -->
+                        </div>
+                    </div>
+                </div>
+
+                <hr style="margin: 25px 0; border: none; border-top: 1px solid var(--border-color);">
+
                 <!-- Installed Models Section -->
                 <div class="setting-group">
                     <h3>💾 Installed Models</h3>
@@ -500,6 +519,6 @@
         </div>
     </div>
 
-        <script src="/static/app.js?v=11"></script>
+        <script src="/static/app.js?v=12"></script>
     </body>
 </html>

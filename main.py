@@ -927,6 +927,219 @@ async def delete_ollama_model(model_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ==========================================
+# HUGGING FACE INTEGRATION
+# ==========================================
+
+@app.get("/huggingface/search")
+async def search_huggingface_models(query: str = "", limit: int = 20):
+    """
+    Search Hugging Face for GGUF models.
+    
+    Example:
+        curl "http://localhost:8000/huggingface/search?query=llama&limit=10"
+    """
+    try:
+        import json
+        
+        # Search Hugging Face API for GGUF models
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Search for models with GGUF in the name or tags
+            search_query = f"{query} GGUF" if query else "GGUF"
+            
+            response = await client.get(
+                "https://huggingface.co/api/models",
+                params={
+                    "search": search_query,
+                    "limit": limit,
+                    "sort": "downloads",
+                    "direction": -1,
+                    "filter": "text-generation"
+                }
+            )
+            
+            if response.status_code == 200:
+                models = response.json()
+                
+                # Filter and format results
+                results = []
+                for model in models:
+                    # Only include models that likely have GGUF files
+                    model_id = model.get("id", "")
+                    if "gguf" in model_id.lower() or "GGUF" in model_id:
+                        results.append({
+                            "id": model_id,
+                            "author": model.get("author", ""),
+                            "model_name": model_id.split("/")[-1] if "/" in model_id else model_id,
+                            "downloads": model.get("downloads", 0),
+                            "likes": model.get("likes", 0),
+                            "tags": model.get("tags", []),
+                            "last_modified": model.get("lastModified", ""),
+                            "url": f"https://huggingface.co/{model_id}"
+                        })
+                
+                return {
+                    "success": True,
+                    "count": len(results),
+                    "models": results
+                }
+            else:
+                raise HTTPException(status_code=502, detail="Failed to search Hugging Face")
+                
+    except Exception as e:
+        logger.error(f"Failed to search Hugging Face: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/huggingface/model/{owner}/{repo}/files")
+async def get_huggingface_model_files(owner: str, repo: str):
+    """
+    Get list of GGUF files for a specific Hugging Face model.
+    
+    Example:
+        curl "http://localhost:8000/huggingface/model/TheBloke/Llama-2-7B-Chat-GGUF/files"
+    """
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Get file tree from Hugging Face API
+            response = await client.get(
+                f"https://huggingface.co/api/models/{owner}/{repo}/tree/main"
+            )
+            
+            if response.status_code == 200:
+                files = response.json()
+                
+                # Filter for GGUF files
+                gguf_files = []
+                for file in files:
+                    if file.get("type") == "file" and file.get("path", "").endswith(".gguf"):
+                        size_gb = file.get("size", 0) / (1024**3)
+                        gguf_files.append({
+                            "path": file.get("path"),
+                            "size": file.get("size", 0),
+                            "size_gb": round(size_gb, 2),
+                            "download_url": f"https://huggingface.co/{owner}/{repo}/resolve/main/{file.get('path')}"
+                        })
+                
+                # Sort by size (smaller first for easier testing)
+                gguf_files.sort(key=lambda x: x["size"])
+                
+                return {
+                    "success": True,
+                    "model_id": f"{owner}/{repo}",
+                    "count": len(gguf_files),
+                    "files": gguf_files
+                }
+            else:
+                raise HTTPException(status_code=404, detail="Model not found on Hugging Face")
+                
+    except Exception as e:
+        logger.error(f"Failed to get Hugging Face model files: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/huggingface/import")
+async def import_huggingface_model(request: dict):
+    """
+    Download a GGUF file from Hugging Face and import it to Ollama.
+    
+    Request body:
+    {
+        "download_url": "https://huggingface.co/...",
+        "model_name": "my-custom-model",
+        "file_name": "model.gguf"
+    }
+    """
+    try:
+        download_url = request.get("download_url")
+        model_name = request.get("model_name")
+        file_name = request.get("file_name")
+        
+        if not all([download_url, model_name, file_name]):
+            raise HTTPException(status_code=400, detail="Missing required fields")
+        
+        # Sanitize model name (lowercase, replace spaces/special chars with hyphens)
+        model_name = re.sub(r'[^a-z0-9-]', '-', model_name.lower())
+        
+        # Create downloads directory
+        downloads_dir = "downloads/huggingface"
+        os.makedirs(downloads_dir, exist_ok=True)
+        
+        file_path = os.path.join(downloads_dir, file_name)
+        
+        # Download the GGUF file
+        logger.info(f"Downloading {file_name} from Hugging Face...")
+        
+        async with httpx.AsyncClient(timeout=None) as client:
+            async with client.stream("GET", download_url) as response:
+                if response.status_code != 200:
+                    raise HTTPException(status_code=502, detail="Failed to download from Hugging Face")
+                
+                total_size = int(response.headers.get("content-length", 0))
+                downloaded = 0
+                
+                with open(file_path, "wb") as f:
+                    async for chunk in response.aiter_bytes(chunk_size=8192):
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        
+                        # Log progress every 100MB
+                        if downloaded % (100 * 1024 * 1024) == 0:
+                            progress = (downloaded / total_size * 100) if total_size > 0 else 0
+                            logger.info(f"Download progress: {progress:.1f}% ({downloaded / (1024**3):.2f} GB)")
+        
+        logger.info(f"Download complete: {file_path}")
+        
+        # Create Modelfile
+        modelfile_path = os.path.join(downloads_dir, f"{model_name}.Modelfile")
+        with open(modelfile_path, "w") as f:
+            f.write(f"FROM {os.path.abspath(file_path)}\n")
+            f.write("PARAMETER temperature 0.8\n")
+            f.write("PARAMETER top_p 0.9\n")
+            f.write("PARAMETER top_k 40\n")
+        
+        logger.info(f"Created Modelfile: {modelfile_path}")
+        
+        # Import to Ollama using 'ollama create'
+        import subprocess
+        result = subprocess.run(
+            ["ollama", "create", model_name, "-f", modelfile_path],
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode == 0:
+            logger.info(f"Successfully imported {model_name} to Ollama")
+            
+            # Clean up downloaded files
+            try:
+                os.remove(file_path)
+                os.remove(modelfile_path)
+                logger.info("Cleaned up temporary files")
+            except:
+                pass
+            
+            return {
+                "success": True,
+                "message": f"Successfully imported {model_name}",
+                "model_name": model_name
+            }
+        else:
+            error_msg = result.stderr or result.stdout
+            logger.error(f"Failed to import to Ollama: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"Failed to import to Ollama: {error_msg}")
+            
+    except Exception as e:
+        logger.error(f"Failed to import Hugging Face model: {e}")
+        # Clean up partial downloads
+        try:
+            if 'file_path' in locals() and os.path.exists(file_path):
+                os.remove(file_path)
+        except:
+            pass
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """

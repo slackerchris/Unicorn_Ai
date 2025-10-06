@@ -306,6 +306,12 @@ class UnicornAI {
             }
         });
         
+        // Hugging Face search
+        document.getElementById('hfSearchBtn').addEventListener('click', () => this.searchHuggingFace());
+        document.getElementById('hfSearchInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.searchHuggingFace();
+        });
+        
         // User Profile modal
         this.closeUserProfileBtn.addEventListener('click', () => this.closeUserProfile());
         this.saveUserProfileBtn.addEventListener('click', () => this.saveUserProfile());
@@ -1715,6 +1721,226 @@ class UnicornAI {
             console.error('Error deleting model:', error);
             this.showError('Failed to delete model: ' + error.message);
         }
+    }
+    
+    // ===== Hugging Face Integration =====
+    
+    async searchHuggingFace() {
+        const searchInput = document.getElementById('hfSearchInput');
+        const resultsContainer = document.getElementById('hfSearchResults');
+        const resultsList = document.getElementById('hfResultsList');
+        
+        const query = searchInput.value.trim();
+        if (!query) {
+            this.showError('Please enter a search term');
+            return;
+        }
+        
+        resultsContainer.style.display = 'block';
+        resultsList.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);"><i class="fas fa-spinner fa-spin"></i> Searching Hugging Face...</div>';
+        
+        try {
+            const response = await fetch(`${this.apiBase}/huggingface/search?query=${encodeURIComponent(query)}&limit=15`);
+            if (!response.ok) throw new Error('Failed to search Hugging Face');
+            
+            const data = await response.json();
+            
+            if (data.models && data.models.length > 0) {
+                resultsList.innerHTML = '';
+                
+                for (const model of data.models) {
+                    const modelCard = document.createElement('div');
+                    modelCard.style.cssText = 'background: var(--bg-secondary); border-radius: 8px; padding: 15px; margin-bottom: 10px;';
+                    
+                    modelCard.innerHTML = `
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600; margin-bottom: 5px;">
+                                    ${model.model_name}
+                                </div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 5px;">
+                                    by ${model.author}
+                                </div>
+                                <div style="font-size: 0.75rem; color: var(--text-secondary);">
+                                    📥 ${this.formatNumber(model.downloads)} downloads · ❤️ ${model.likes} likes
+                                </div>
+                            </div>
+                            <button class="btn btn-sm btn-primary" onclick="app.selectHFModel('${model.id}')" style="white-space: nowrap;">
+                                Select
+                            </button>
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary);">
+                            <a href="${model.url}" target="_blank" style="color: var(--primary-color);">View on Hugging Face →</a>
+                        </div>
+                    `;
+                    
+                    resultsList.appendChild(modelCard);
+                }
+            } else {
+                resultsList.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">No GGUF models found for "' + query + '"</div>';
+            }
+            
+        } catch (error) {
+            console.error('Error searching Hugging Face:', error);
+            resultsList.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--error);">Error: ' + error.message + '</div>';
+        }
+    }
+    
+    async selectHFModel(modelId) {
+        const [owner, repo] = modelId.split('/');
+        const resultsList = document.getElementById('hfResultsList');
+        
+        resultsList.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);"><i class="fas fa-spinner fa-spin"></i> Loading model files...</div>';
+        
+        try {
+            const response = await fetch(`${this.apiBase}/huggingface/model/${owner}/${repo}/files`);
+            if (!response.ok) throw new Error('Failed to load model files');
+            
+            const data = await response.json();
+            
+            if (data.files && data.files.length > 0) {
+                resultsList.innerHTML = `
+                    <div style="background: var(--bg-secondary); border-radius: 8px; padding: 15px; margin-bottom: 15px;">
+                        <h4 style="margin: 0 0 10px 0;">📦 ${modelId}</h4>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 0;">
+                            Found ${data.files.length} GGUF file(s). Select a file to import:
+                        </p>
+                    </div>
+                `;
+                
+                for (const file of data.files) {
+                    const fileCard = document.createElement('div');
+                    fileCard.style.cssText = 'background: var(--bg-secondary); border-radius: 8px; padding: 15px; margin-bottom: 10px;';
+                    
+                    // Extract quantization info from filename (e.g., Q4_K_M, Q5_K_S)
+                    const quantMatch = file.path.match(/Q\d+_[KF]_[MSL]|Q\d+_\d+/i);
+                    const quantization = quantMatch ? quantMatch[0] : 'Unknown';
+                    
+                    fileCard.innerHTML = `
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600; margin-bottom: 5px;">
+                                    ${file.path}
+                                </div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary);">
+                                    📊 ${quantization} quantization · 💾 ${file.size_gb} GB
+                                </div>
+                            </div>
+                            <button class="btn btn-sm btn-primary" onclick="app.importHFModel('${modelId}', '${file.download_url}', '${file.path}', ${file.size_gb})" style="white-space: nowrap;">
+                                <i class="fas fa-download"></i> Import
+                            </button>
+                        </div>
+                    `;
+                    
+                    resultsList.appendChild(fileCard);
+                }
+                
+                // Add back button
+                const backBtn = document.createElement('div');
+                backBtn.style.cssText = 'text-align: center; margin-top: 15px;';
+                backBtn.innerHTML = `<button class="btn btn-secondary" onclick="app.searchHuggingFace()">← Back to Search</button>`;
+                resultsList.appendChild(backBtn);
+                
+            } else {
+                resultsList.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">No GGUF files found for this model</div>';
+            }
+            
+        } catch (error) {
+            console.error('Error loading model files:', error);
+            resultsList.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--error);">Error: ' + error.message + '</div>';
+        }
+    }
+    
+    async importHFModel(modelId, downloadUrl, fileName, sizeGB) {
+        // Generate a clean model name
+        const modelName = modelId.split('/')[1].toLowerCase().replace(/[^a-z0-9-]/g, '-');
+        
+        if (!confirm(`Import ${fileName} (${sizeGB} GB)?\n\nThis will:\n1. Download the GGUF file from Hugging Face\n2. Create a Modelfile\n3. Import to Ollama as "${modelName}"\n\nThis may take several minutes depending on file size.`)) {
+            return;
+        }
+        
+        const resultsList = document.getElementById('hfResultsList');
+        resultsList.innerHTML = `
+            <div style="background: var(--bg-secondary); border-radius: 8px; padding: 20px; text-align: center;">
+                <div style="font-size: 1.2rem; margin-bottom: 15px;">
+                    <i class="fas fa-spinner fa-spin"></i> Importing ${fileName}
+                </div>
+                <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 10px;">
+                    This may take several minutes for large files...
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-secondary);">
+                    ⏳ Downloading from Hugging Face<br>
+                    📦 Creating Modelfile<br>
+                    🦙 Importing to Ollama
+                </div>
+            </div>
+        `;
+        
+        try {
+            const response = await fetch(`${this.apiBase}/huggingface/import`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    download_url: downloadUrl,
+                    model_name: modelName,
+                    file_name: fileName
+                })
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Failed to import model');
+            }
+            
+            const data = await response.json();
+            
+            resultsList.innerHTML = `
+                <div style="background: var(--success-bg); border: 1px solid var(--success); border-radius: 8px; padding: 20px; text-align: center;">
+                    <div style="font-size: 1.5rem; margin-bottom: 10px;">✅</div>
+                    <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 10px; color: var(--success);">
+                        Successfully Imported!
+                    </div>
+                    <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 15px;">
+                        Model "${data.model_name}" is now available in Ollama
+                    </div>
+                    <button class="btn btn-primary" onclick="app.closeModelManager(); app.addSystemMessage('✨ New model imported: ${data.model_name}');">
+                        Done
+                    </button>
+                </div>
+            `;
+            
+            // Refresh model lists
+            await this.loadInstalledModels();
+            await this.loadAvailableModels();
+            
+        } catch (error) {
+            console.error('Error importing model:', error);
+            resultsList.innerHTML = `
+                <div style="background: var(--bg-secondary); border-radius: 8px; padding: 20px; text-align: center;">
+                    <div style="font-size: 1.5rem; margin-bottom: 10px; color: var(--error);">❌</div>
+                    <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 10px; color: var(--error);">
+                        Import Failed
+                    </div>
+                    <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 15px;">
+                        ${error.message}
+                    </div>
+                    <button class="btn btn-secondary" onclick="app.searchHuggingFace()">
+                        ← Back to Search
+                    </button>
+                </div>
+            `;
+        }
+    }
+    
+    formatNumber(num) {
+        if (num >= 1000000) {
+            return (num / 1000000).toFixed(1) + 'M';
+        } else if (num >= 1000) {
+            return (num / 1000).toFixed(1) + 'K';
+        }
+        return num.toString();
     }
 }
 
