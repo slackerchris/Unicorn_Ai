@@ -37,3 +37,5 @@ uvloop==0.21.0
 watchfiles==1.1.0
 websockets==15.0.1
 yarl==1.21.0
+chromadb>=1.1.1
+sentence-transformers>=5.1.0

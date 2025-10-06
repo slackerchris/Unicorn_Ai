@@ -26,6 +26,9 @@
                         <select id="personaSelector" class="persona-select">
                             <option value="">Loading personas...</option>
                         </select>
+                        <button id="editPersonaBtn" class="edit-persona-btn" title="Edit current persona" style="display: none;">
+                            <i class="fas fa-edit"></i>
+                        </button>
                         <button id="deletePersonaBtn" class="delete-persona-btn" title="Delete current persona" style="display: none;">
                             <i class="fas fa-trash"></i>
                         </button>
@@ -48,6 +51,12 @@
                 </button>
                 <button class="action-btn" id="voiceModeBtn" data-voice-enabled="false">
                     <i class="fas fa-microphone-slash"></i> Voice Mode: Off
+                </button>
+                <button class="action-btn" id="memoryModeBtn" data-memory-enabled="true">
+                    <i class="fas fa-brain"></i> Memory: On
+                </button>
+                <button class="action-btn" id="userProfileBtn">
+                    <i class="fas fa-user-circle"></i> My Profile
                 </button>
                 <button class="action-btn" id="settingsBtn">
                     <i class="fas fa-cog"></i> Settings
@@ -197,6 +206,14 @@
                     </div>
 
                     <div class="setting-group">
+                        <label for="personaModel">AI Model (LLM)</label>
+                        <select id="personaModel" class="text-input">
+                            <option value="">Loading models...</option>
+                        </select>
+                        <p class="setting-description">Which Ollama model to use for this persona</p>
+                    </div>
+
+                    <div class="setting-group">
                         <label for="personaVoice">Voice</label>
                         <select id="personaVoice" class="text-input">
                             <option value="en-US-AriaNeural">Aria (US - Expressive)</option>
@@ -311,6 +328,78 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" id="resetSettingsBtn">Reset to Defaults</button>
                 <button class="btn btn-primary" id="saveSettingsBtn">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Profile Modal -->
+    <div class="modal" id="userProfileModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>👤 My Profile</h2>
+                <button class="modal-close" id="closeUserProfileBtn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+                    Tell the AI about yourself so it can personalize conversations
+                </p>
+                
+                <div class="setting-group">
+                    <label for="userName">Your Name</label>
+                    <input type="text" id="userName" class="text-input" placeholder="e.g., Chris">
+                    <p class="setting-description">How should the AI address you?</p>
+                </div>
+
+                <div class="setting-group">
+                    <label for="userPreferredName">Preferred Name (optional)</label>
+                    <input type="text" id="userPreferredName" class="text-input" placeholder="e.g., nickname">
+                    <p class="setting-description">If different from your full name</p>
+                </div>
+
+                <div class="setting-group">
+                    <label for="userPronouns">Pronouns</label>
+                    <input type="text" id="userPronouns" class="text-input" placeholder="e.g., he/him, she/her, they/them">
+                </div>
+
+                <div class="setting-group">
+                    <label for="userInterests">Interests</label>
+                    <input type="text" id="userInterests" class="text-input" placeholder="e.g., coding, gaming, music">
+                    <p class="setting-description">Comma-separated list</p>
+                </div>
+
+                <div class="setting-group">
+                    <label for="userFacts">Things to Remember</label>
+                    <textarea id="userFacts" class="text-input" rows="3" placeholder="e.g., vegetarian, works from home, has a cat named Fluffy"></textarea>
+                    <p class="setting-description">Important facts the AI should know</p>
+                </div>
+
+                <div class="setting-group">
+                    <label for="userFormality">Communication Style</label>
+                    <select id="userFormality" class="text-input">
+                        <option value="casual">Casual & Friendly</option>
+                        <option value="professional">Professional</option>
+                        <option value="playful">Playful & Fun</option>
+                    </select>
+                </div>
+
+                <div class="setting-group">
+                    <label>
+                        <input type="checkbox" id="userHumor" checked>
+                        Use Humor
+                    </label>
+                </div>
+
+                <div class="setting-group">
+                    <label>
+                        <input type="checkbox" id="userEmojis" checked>
+                        Use Emojis
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="saveUserProfileBtn">Save Profile</button>
             </div>
         </div>
     </div>

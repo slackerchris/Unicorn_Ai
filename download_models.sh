@@ -6,9 +6,21 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMFYUI_DIR="$SCRIPT_DIR/comfyui"
-MODELS_DIR="$COMFYUI_DIR/models"
 
+# Auto-detect models location from extra_model_paths.yaml
+if [ -f "$COMFYUI_DIR/extra_model_paths.yaml" ]; then
+    MODELS_DIR=$(grep "base_path:" "$COMFYUI_DIR/extra_model_paths.yaml" | head -1 | sed 's/.*base_path: *//' | sed 's|/$||')
+    echo "📦 Using models location from config: $MODELS_DIR"
+else
+    # Default fallback
+    MODELS_DIR="$HOME/.local/share/ComfyUI"
+    echo "📦 No config found, using default: $MODELS_DIR"
+    echo "   Run ./detect_models.sh first to configure"
+fi
+
+echo ""
 echo "📦 Downloading AI models for Unicorn AI..."
+echo ""
 echo "=========================================="
 echo ""
 echo "⚠️  This will download ~6-8GB of models"

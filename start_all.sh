@@ -222,7 +222,7 @@ echo -e "${CYAN}🔍 Checking all services...${NC}"
 echo ""
 
 # Check Ollama
-if check_port 11434; then
+if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
     echo -e "${GREEN}✅ Ollama:          http://localhost:11434${NC}"
 else
     echo -e "${RED}❌ Ollama:          OFFLINE${NC}"

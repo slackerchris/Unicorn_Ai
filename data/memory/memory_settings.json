@@ -1,0 +1,14 @@
+{
+  "web_1759709402579_fvlo5zo8n": {
+    "enabled": true
+  },
+  "test_session": {
+    "enabled": false
+  },
+  "test_clean": {
+    "enabled": false
+  },
+  "test_with_memory": {
+    "enabled": true
+  }
+}

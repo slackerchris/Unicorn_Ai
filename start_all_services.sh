@@ -17,9 +17,23 @@ if [ ! -d "comfyui" ]; then
     SKIP_COMFYUI=true
 fi
 
-# Start ComfyUI first (if installed)
+# Start TTS Service first
+echo "1️⃣  Starting Coqui TTS Service..."
+cd tts_service_coqui
+source venv/bin/activate
+python tts_server.py > ../outputs/logs/tts_service.log 2>&1 &
+TTS_PID=$!
+deactivate
+cd ..
+echo "   ✅ TTS Service started (PID: $TTS_PID)"
+echo "   🔊 TTS: http://localhost:5050"
+echo "   ⏳ Model loading (10-15 seconds)..."
+sleep 3
+
+# Start ComfyUI (if installed)
 if [ "$SKIP_COMFYUI" != "true" ]; then
-    echo "1️⃣  Starting ComfyUI..."
+    echo ""
+    echo "2️⃣  Starting ComfyUI..."
     cd comfyui
     source venv/bin/activate
     python main.py --listen 0.0.0.0 --port 8188 > ../outputs/logs/comfyui.log 2>&1 &
@@ -35,7 +49,7 @@ fi
 
 # Start FastAPI backend
 echo ""
-echo "2️⃣  Starting API Backend..."
+echo "3️⃣  Starting API Backend..."
 venv/bin/python main.py > outputs/logs/api.log 2>&1 &
 API_PID=$!
 echo "   ✅ API started (PID: $API_PID)"
@@ -44,26 +58,29 @@ sleep 2
 
 # Start Telegram bot
 echo ""
-echo "3️⃣  Starting Telegram Bot..."
+echo "4️⃣  Starting Telegram Bot..."
 venv/bin/python telegram_bot.py > outputs/logs/telegram_bot.log 2>&1 &
 BOT_PID=$!
 echo "   ✅ Bot started (PID: $BOT_PID)"
 sleep 2
 
 # Save PIDs
-echo "$COMFYUI_PID $API_PID $BOT_PID" > outputs/logs/pids.txt
+echo "$TTS_PID $COMFYUI_PID $API_PID $BOT_PID" > outputs/logs/pids.txt
 
 echo ""
 echo "🎉 All services started!"
 echo ""
 echo "📊 Service Status:"
+echo "   TTS:      $TTS_PID"
 echo "   ComfyUI:  ${COMFYUI_PID:-Not running}"
 echo "   API:      $API_PID"
 echo "   Bot:      $BOT_PID"
 echo ""
 echo "📱 Open Telegram and chat with your bot!"
+echo "🌐 Or visit: http://localhost:8000"
 echo ""
 echo "📋 Logs:"
+echo "   TTS:     tail -f outputs/logs/tts_service.log"
 if [ "$SKIP_COMFYUI" != "true" ]; then
     echo "   ComfyUI: tail -f outputs/logs/comfyui.log"
 fi

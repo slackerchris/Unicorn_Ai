@@ -49,7 +49,19 @@ def set_voice_mode(user_id: int, enabled: bool):
     if user_id not in user_preferences:
         user_preferences[user_id] = {}
     user_preferences[user_id]["voice_mode"] = enabled
-    logger.info(f"User {user_id} voice mode: {enabled}")
+
+
+def get_memory_mode(user_id: int) -> bool:
+    """Check if user has memory mode enabled"""
+    return user_preferences.get(user_id, {}).get("memory_mode", True)  # Default: ON
+
+
+def set_memory_mode(user_id: int, enabled: bool):
+    """Set memory mode for a user"""
+    if user_id not in user_preferences:
+        user_preferences[user_id] = {}
+    user_preferences[user_id]["memory_mode"] = enabled
+    logger.info(f"User {user_id} memory mode: {enabled}")
 
 
 def get_user_persona(user_id: int) -> Optional[str]:
@@ -118,6 +130,9 @@ Just send me any message! I'll respond naturally.
 /start - Welcome message
 /help - This help text
 /status - Check if I'm working
+/voice - Toggle voice/text messages
+/memory - Toggle conversation memory
+/persona - Switch AI personality
 
 **Privacy:**
 🔒 Everything is private and runs on your own server
@@ -171,6 +186,41 @@ To switch back to text: /voice"""
 I'll send you regular text messages now.
 
 To switch back to voice: /voice"""
+    
+    await update.message.reply_text(message)
+
+
+async def memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /memory command - toggle conversation memory"""
+    user = update.effective_user
+    
+    # Toggle memory mode
+    current_mode = get_memory_mode(user.id)
+    new_mode = not current_mode
+    set_memory_mode(user.id, new_mode)
+    
+    # Update backend
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                f"{API_BASE_URL}/memory/toggle/telegram_{user.id}",
+                params={"enabled": new_mode}
+            )
+    except Exception as e:
+        logger.error(f"Error toggling memory on backend: {e}")
+    
+    if new_mode:
+        message = f"""🧠 **Memory mode ON!**
+
+I'll remember our conversations now! I can recall past messages and continue where we left off.
+
+To disable memory: /memory"""
+    else:
+        message = f"""💭 **Memory mode OFF!**
+
+I won't remember past messages. Each message will be treated as a new conversation.
+
+To enable memory: /memory"""
     
     await update.message.reply_text(message)
 
@@ -253,7 +303,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             # Build request payload
-            payload = {"message": message_text}
+            payload = {
+                "message": message_text,
+                "session_id": f"telegram_{user.id}"  # Unique session ID per user
+            }
             if user_persona_id:
                 payload["persona_id"] = user_persona_id
             
@@ -361,6 +414,7 @@ def main():
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("status", status_command))
     application.add_handler(CommandHandler("voice", voice_command))
+    application.add_handler(CommandHandler("memory", memory_command))
     application.add_handler(CommandHandler("persona", persona_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     

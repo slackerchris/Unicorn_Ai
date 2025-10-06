@@ -20,7 +20,9 @@ from loguru import logger
 import sys
 from providers import ImageProviderManager
 from tts_service import TTSService
+from coqui_tts_client import coqui_tts_client
 from persona_manager import get_persona_manager, Persona
+from memory_manager import memory_manager
 
 # Load environment variables
 load_dotenv("config/.env")
@@ -68,6 +70,7 @@ tts_service = TTSService(voice=current_persona.voice)
 class ChatRequest(BaseModel):
     message: str
     persona_id: Optional[str] = None  # Optional persona ID to use
+    session_id: Optional[str] = "web_default"  # Session ID for memory
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
 
@@ -104,11 +107,56 @@ class ChatResponse(BaseModel):
     image_prompt: Optional[str] = None
 
 
-def build_system_prompt(persona: Persona) -> str:
+def get_user_profile() -> dict:
+    """Load user profile if it exists."""
+    import json
+    profile_path = "data/user_profile.json"
+    
+    if os.path.exists(profile_path):
+        try:
+            with open(profile_path, 'r') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+
+async def build_system_prompt(persona: Persona) -> str:
     """
     Build the system prompt for the AI companion using a Persona object.
+    Includes user profile information if available.
     """
-    return persona.system_prompt
+    prompt = persona.system_prompt
+    
+    # Add user profile context if available
+    user_profile = await get_user_profile()
+    if user_profile and user_profile.get('name'):
+        profile_context = "\n\n--- User Information ---\n"
+        
+        if user_profile.get('name'):
+            profile_context += f"User's name: {user_profile['name']}\n"
+        if user_profile.get('preferred_name'):
+            profile_context += f"Prefers to be called: {user_profile['preferred_name']}\n"
+        if user_profile.get('pronouns'):
+            profile_context += f"Pronouns: {user_profile['pronouns']}\n"
+        if user_profile.get('interests'):
+            profile_context += f"Interests: {', '.join(user_profile['interests'])}\n"
+        if user_profile.get('facts'):
+            profile_context += f"Important facts: {', '.join(user_profile['facts'])}\n"
+        
+        prefs = user_profile.get('preferences', {})
+        if prefs:
+            profile_context += f"Communication style: {prefs.get('formality', 'casual')}"
+            if prefs.get('humor'):
+                profile_context += ", appreciates humor"
+            if prefs.get('emojis'):
+                profile_context += ", likes emojis"
+            profile_context += "\n"
+        
+        profile_context += "Remember and use this information naturally in conversation.\n"
+        prompt += profile_context
+    
+    return prompt
 
 
 def get_persona_for_request(persona_id: Optional[str] = None) -> Persona:
@@ -124,10 +172,11 @@ def get_persona_for_request(persona_id: Optional[str] = None) -> Persona:
     return persona_manager.get_current_persona()
 
 
-async def chat_with_ollama(message: str, persona: Persona, temperature: Optional[float] = None, max_tokens: Optional[int] = None) -> dict:
+async def chat_with_ollama(message: str, persona: Persona, session_id: str = "default", temperature: Optional[float] = None, max_tokens: Optional[int] = None) -> dict:
     """
     Send a message to Ollama and get a response using the specified persona.
     Each persona can use a different LLM model based on their role.
+    Now includes memory context for conversation continuity.
     """
     url = f"{OLLAMA_BASE_URL}/api/generate"
     
@@ -136,9 +185,27 @@ async def chat_with_ollama(message: str, persona: Persona, temperature: Optional
     tokens = max_tokens if max_tokens is not None else persona.max_tokens
     model = persona.model  # Each persona can use a different LLM!
     
+    # Build prompt with user profile context
+    system_prompt = await build_system_prompt(persona)
+    
+    # Get conversation context from memory (if enabled)
+    memory_context = memory_manager.build_context(
+        session_id=session_id,
+        persona_id=persona.id,
+        current_message=message,
+        max_recent=5,
+        max_relevant=3
+    )
+    
+    # Build full prompt with memory context
+    if memory_context:
+        full_prompt = f"{system_prompt}\n\n{memory_context}\n\nUser: {message}\n\n{persona.name}:"
+    else:
+        full_prompt = f"{system_prompt}\n\nUser: {message}\n\n{persona.name}:"
+    
     payload = {
         "model": model,
-        "prompt": f"{persona.system_prompt}\n\nUser: {message}\n\n{persona.name}:",
+        "prompt": full_prompt,
         "stream": False,
         "options": {
             "temperature": temp,
@@ -147,7 +214,7 @@ async def chat_with_ollama(message: str, persona: Persona, temperature: Optional
         }
     }
     
-    logger.info(f"Using model '{model}' for persona '{persona.name}'")  # Log which model is being used
+    logger.info(f"Using model '{model}' for persona '{persona.name}' (Memory: {'ON' if memory_manager.is_memory_enabled(session_id) else 'OFF'})")  # Log which model is being used
     
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -246,30 +313,50 @@ async def generate_image(prompt: str, width: int = 512, height: int = 512, perso
         raise HTTPException(status_code=500, detail=f"Image generation failed: {str(e)}")
 
 
-@app.post("/generate-voice")
+@app.get("/generate-voice")
 async def generate_voice(text: str):
     """
-    Generate voice message from text using TTS.
+    Generate voice message from text using Coqui TTS service.
     
     Example:
-        curl -X POST "http://localhost:8000/generate-voice?text=Hey%20there!" \
-          --output voice.mp3
+        curl "http://localhost:8000/generate-voice?text=Hey%20there!" \
+          --output voice.wav
     """
     logger.info(f"Voice generation requested: {text[:50]}...")
     
     try:
-        # Generate voice message
-        audio_path = await tts_service.text_to_speech(text)
+        # Check if TTS service is running
+        if not await coqui_tts_client.check_health():
+            raise HTTPException(
+                status_code=503,
+                detail="TTS service is not running. Start it with: ./tts_service_coqui/start_tts_service.sh"
+            )
         
-        logger.info(f"Voice generated successfully: {audio_path}")
+        # Generate audio file
+        from pathlib import Path
+        
+        # Use absolute path for TTS service
+        output_dir = Path(__file__).parent / "outputs" / "voice_messages"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        output_path = output_dir / f"voice_{hash(text)}.wav"
+        
+        result = await coqui_tts_client.generate_audio_file(text, str(output_path.absolute()))
+        
+        if result.get("status") == "error":
+            raise HTTPException(status_code=500, detail=result.get("error", "Unknown error"))
+        
+        logger.info(f"Voice generated successfully: {output_path}")
         
         # Return the audio file
         return FileResponse(
-            audio_path,
-            media_type="audio/mpeg",
-            filename="voice_message.mp3"
+            output_path,
+            media_type="audio/wav",
+            filename="voice_message.wav"
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Voice generation failed: {e}")
         raise HTTPException(status_code=500, detail=f"Voice generation failed: {str(e)}")
@@ -283,7 +370,7 @@ async def chat(request: ChatRequest):
     Example:
         curl -X POST http://localhost:8000/chat \
           -H "Content-Type: application/json" \
-          -d '{"message": "Hi! How are you today?", "persona_id": "luna"}'
+          -d '{"message": "Hi! How are you today?", "persona_id": "luna", "session_id": "user123"}'
     """
     logger.info(f"Received message: {request.message[:50]}...")
     
@@ -291,10 +378,19 @@ async def chat(request: ChatRequest):
     persona = get_persona_for_request(request.persona_id)
     logger.info(f"Using persona: {persona.name} ({persona.id})")
     
-    # Get response from Ollama
+    # Store user message in memory
+    memory_manager.add_message(
+        session_id=request.session_id,
+        persona_id=persona.id,
+        role="user",
+        content=request.message
+    )
+    
+    # Get response from Ollama (with memory context)
     result = await chat_with_ollama(
         request.message,
         persona,
+        request.session_id,
         request.temperature,
         request.max_tokens
     )
@@ -315,6 +411,14 @@ async def chat(request: ChatRequest):
         has_image = True
         image_prompt = image_match.group(1).strip()
         logger.info(f"Image requested: {image_prompt}")
+    
+    # Store AI response in memory
+    memory_manager.add_message(
+        session_id=request.session_id,
+        persona_id=persona.id,
+        role="assistant",
+        content=ai_response
+    )
     
     logger.info(f"Sending response: {ai_response[:50]}...")
     
@@ -495,6 +599,129 @@ async def create_persona_endpoint(request: CreatePersonaRequest):
     except Exception as e:
         logger.error(f"Failed to create persona: {e}")
         raise HTTPException(status_code=500, detail="Failed to create persona")
+
+
+@app.put("/personas/{persona_id}")
+async def update_persona_endpoint(persona_id: str, request: CreatePersonaRequest):
+    """
+    Update an existing persona.
+    
+    Example:
+        curl -X PUT http://localhost:8000/personas/custom \
+          -H "Content-Type: application/json" \
+          -d '{"name": "Updated Name", ...}'
+    """
+    try:
+        persona = persona_manager.get_persona(persona_id)
+        if not persona:
+            raise HTTPException(status_code=404, detail=f"Persona '{persona_id}' not found")
+        
+        # Update persona fields
+        persona.name = request.name
+        persona.description = request.description
+        persona.personality_traits = request.personality_traits
+        persona.speaking_style = request.speaking_style
+        persona.temperature = request.temperature
+        persona.max_tokens = request.max_tokens
+        persona.voice = request.voice
+        if request.model:
+            persona.model = request.model
+        
+        # Save updated persona
+        persona_manager.save_persona(persona)
+        
+        logger.info(f"Updated persona: {persona.name} ({persona.id})")
+        
+        return {
+            "success": True,
+            "message": f"Updated persona: {persona.name}",
+            "persona": {
+                "id": persona.id,
+                "name": persona.name,
+                "description": persona.description,
+                "personality_traits": persona.personality_traits,
+                "speaking_style": persona.speaking_style,
+                "voice": persona.voice,
+                "temperature": persona.temperature,
+                "max_tokens": persona.max_tokens
+            }
+        }
+    except Exception as e:
+        logger.error(f"Failed to update persona: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update persona: {str(e)}")
+
+
+@app.get("/user/profile")
+async def get_user_profile():
+    """Get user profile."""
+    import json
+    profile_path = "data/user_profile.json"
+    
+    if os.path.exists(profile_path):
+        with open(profile_path, 'r') as f:
+            return json.load(f)
+    else:
+        return {
+            "name": "",
+            "preferred_name": "",
+            "pronouns": "",
+            "interests": [],
+            "preferences": {
+                "formality": "casual",
+                "humor": True,
+                "emojis": True
+            },
+            "facts": []
+        }
+
+
+@app.post("/user/profile")
+async def update_user_profile(profile: dict):
+    """Update user profile."""
+    import json
+    profile_path = "data/user_profile.json"
+    
+    with open(profile_path, 'w') as f:
+        json.dump(profile, f, indent=2)
+    
+    logger.info(f"Updated user profile: {profile.get('name', 'Unknown')}")
+    return {"success": True, "message": "Profile updated"}
+
+
+# Memory Management Endpoints
+
+@app.get("/memory/status/{session_id}")
+async def get_memory_status(session_id: str, persona_id: str = "luna"):
+    """Get memory status for a session."""
+    stats = memory_manager.get_memory_stats(session_id, persona_id)
+    return {
+        "enabled": stats["enabled"],
+        "recent_messages": stats["recent_messages"],
+        "total_stored": stats["total_stored"]
+    }
+
+
+@app.post("/memory/toggle/{session_id}")
+async def toggle_memory(session_id: str, enabled: bool):
+    """Enable or disable memory for a session."""
+    memory_manager.set_memory_enabled(session_id, enabled)
+    status = "enabled" if enabled else "disabled"
+    logger.info(f"Memory {status} for session {session_id}")
+    return {
+        "success": True,
+        "enabled": enabled,
+        "message": f"Memory {status}"
+    }
+
+
+@app.delete("/memory/clear/{session_id}")
+async def clear_memory(session_id: str):
+    """Clear recent conversation memory for a session."""
+    memory_manager.clear_session(session_id)
+    return {
+        "success": True,
+        "message": "Conversation memory cleared"
+    }
 
 
 @app.delete("/personas/{persona_id}")

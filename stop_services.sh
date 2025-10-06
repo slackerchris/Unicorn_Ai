@@ -18,6 +18,7 @@ if [ -f "outputs/logs/pids.txt" ]; then
 fi
 
 # Also kill by name as backup
+pkill -f "python tts_server.py"
 pkill -f "python main.py"
 pkill -f "python telegram_bot.py"
 
