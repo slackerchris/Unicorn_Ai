@@ -300,10 +300,19 @@ class UnicornAI {
         // Model Manager modal
         this.downloadModelBtn.addEventListener('click', () => this.downloadModel());
         document.getElementById('restartComfyuiBtn').addEventListener('click', () => this.restartComfyUI());
+        document.getElementById('viewDebugBtn').addEventListener('click', () => this.viewDebugInfo());
         this.modelManagerModal.querySelector('.close-modal').addEventListener('click', () => this.closeModelManager());
         this.modelManagerModal.addEventListener('click', (e) => {
             if (e.target === this.modelManagerModal) {
                 this.closeModelManager();
+            }
+        });
+        
+        // Debug modal
+        document.getElementById('closeDebugBtn').addEventListener('click', () => this.closeDebugModal());
+        document.getElementById('debugModal').addEventListener('click', (e) => {
+            if (e.target.id === 'debugModal') {
+                this.closeDebugModal();
             }
         });
         
@@ -1980,6 +1989,107 @@ class UnicornAI {
             return (num / 1000).toFixed(1) + 'K';
         }
         return num.toString();
+    }
+    
+    // ===== Debug Info =====
+    
+    async viewDebugInfo() {
+        const modal = document.getElementById('debugModal');
+        const content = document.getElementById('debugContent');
+        
+        modal.style.display = 'block';
+        content.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);"><i class="fas fa-spinner fa-spin fa-2x"></i><p style="margin-top: 15px;">Loading debug information...</p></div>';
+        
+        try {
+            const response = await fetch(`${this.apiBase}/comfyui/last-generation`);
+            if (!response.ok) throw new Error('Failed to fetch debug info');
+            
+            const data = await response.json();
+            
+            if (!data.timestamp) {
+                content.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);"><i class="fas fa-image fa-2x"></i><p style="margin-top: 15px;">No image generation yet</p><p style="font-size: 0.9rem; opacity: 0.7;">Generate an image first to see debug info</p></div>';
+                return;
+            }
+            
+            const date = new Date(data.timestamp * 1000);
+            const timeStr = date.toLocaleString();
+            
+            content.innerHTML = `
+                <div style="background: var(--bg-secondary); border-radius: 8px; padding: 20px; margin-bottom: 15px;">
+                    <h3 style="margin: 0 0 15px 0; display: flex; align-items: center; gap: 10px;">
+                        ${data.success ? '<i class="fas fa-check-circle" style="color: var(--success);"></i> Success' : '<i class="fas fa-times-circle" style="color: var(--error);"></i> Failed'}
+                    </h3>
+                    <div style="display: grid; grid-template-columns: 120px 1fr; gap: 10px; font-size: 0.95rem;">
+                        <div style="font-weight: 600;">Time:</div>
+                        <div>${timeStr}</div>
+                        
+                        <div style="font-weight: 600;">Persona:</div>
+                        <div>${data.persona}</div>
+                        
+                        <div style="font-weight: 600;">Dimensions:</div>
+                        <div>${data.width}x${data.height}</div>
+                    </div>
+                </div>
+                
+                <div style="background: var(--bg-secondary); border-radius: 8px; padding: 20px; margin-bottom: 15px;">
+                    <h3 style="margin: 0 0 10px 0; font-size: 1rem;">
+                        <i class="fas fa-comment"></i> Original Prompt
+                    </h3>
+                    <div style="background: var(--bg-primary); padding: 12px; border-radius: 6px; font-family: monospace; font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap;">
+${data.original_prompt || 'N/A'}</div>
+                </div>
+                
+                <div style="background: var(--bg-secondary); border-radius: 8px; padding: 20px; margin-bottom: 15px;">
+                    <h3 style="margin: 0 0 10px 0; font-size: 1rem;">
+                        <i class="fas fa-magic"></i> Full Prompt (Sent to ComfyUI)
+                    </h3>
+                    <div style="background: var(--bg-primary); padding: 12px; border-radius: 6px; font-family: monospace; font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap;">
+${data.full_prompt}</div>
+                </div>
+                
+                <div style="background: var(--bg-secondary); border-radius: 8px; padding: 20px; margin-bottom: 15px;">
+                    <h3 style="margin: 0 0 10px 0; font-size: 1rem;">
+                        <i class="fas fa-ban"></i> Negative Prompt
+                    </h3>
+                    <div style="background: var(--bg-primary); padding: 12px; border-radius: 6px; font-family: monospace; font-size: 0.85rem; line-height: 1.5; white-space: pre-wrap; max-height: 150px; overflow-y: auto;">
+${data.negative_prompt}</div>
+                </div>
+                
+                ${data.image_style ? `
+                <div style="background: var(--bg-secondary); border-radius: 8px; padding: 20px; margin-bottom: 15px;">
+                    <h3 style="margin: 0 0 10px 0; font-size: 1rem;">
+                        <i class="fas fa-palette"></i> Image Style
+                    </h3>
+                    <div style="background: var(--bg-primary); padding: 12px; border-radius: 6px; font-family: monospace; font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap;">
+${data.image_style}</div>
+                </div>
+                ` : ''}
+                
+                ${data.error ? `
+                <div style="background: var(--error-bg, rgba(220, 53, 69, 0.1)); border: 1px solid var(--error); border-radius: 8px; padding: 20px;">
+                    <h3 style="margin: 0 0 10px 0; font-size: 1rem; color: var(--error);">
+                        <i class="fas fa-exclamation-triangle"></i> Error
+                    </h3>
+                    <div style="font-family: monospace; font-size: 0.9rem; color: var(--error);">
+${data.error}</div>
+                </div>
+                ` : ''}
+            `;
+            
+        } catch (error) {
+            console.error('Error loading debug info:', error);
+            content.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: var(--error);">
+                    <i class="fas fa-exclamation-circle fa-2x"></i>
+                    <p style="margin-top: 15px;">Failed to load debug information</p>
+                    <p style="font-size: 0.9rem; opacity: 0.7;">${error.message}</p>
+                </div>
+            `;
+        }
+    }
+    
+    closeDebugModal() {
+        document.getElementById('debugModal').style.display = 'none';
     }
 }
 

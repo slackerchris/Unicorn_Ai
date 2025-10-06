@@ -515,6 +515,18 @@
       "content": "Delicious",
       "timestamp": "2025-10-06T10:54:38.490460",
       "persona_id": "luna"
+    },
+    {
+      "role": "user",
+      "content": "generate image: a smiling robot",
+      "timestamp": "2025-10-06T13:25:15.915809",
+      "persona_id": "luna"
+    },
+    {
+      "role": "assistant",
+      "content": "[IMAGE: robot, face lit up with happiness, hands holding heart-shaped emojis]",
+      "timestamp": "2025-10-06T13:25:49.969719",
+      "persona_id": "luna"
     }
   ]
 }

@@ -314,25 +314,45 @@ async def generate_image(prompt: str, width: int = 512, height: int = 512, perso
     # Get persona for character-consistent generation
     persona = get_persona_for_request(persona_id)
     
+    negative_prompt = "ugly, deformed, blurry, low quality, distorted, malformed, disfigured, bad anatomy, wrong anatomy, extra limbs, missing limbs, floating limbs, disconnected limbs, mutation, mutated, gross proportions, bad proportions, poorly drawn, cartoon, anime, sketches, worst quality, low resolution, noise, grainy"
+    
     try:
         # Build character-consistent prompt using persona details
         character_prompt = f"{persona.name}, {persona.description}, {prompt}"
         if persona.image_style:
             character_prompt += f", {persona.image_style}"
         
+        # Store debug info
+        import time
+        _last_image_generation.update({
+            "timestamp": time.time(),
+            "persona": persona.name,
+            "original_prompt": prompt,
+            "full_prompt": character_prompt,
+            "negative_prompt": negative_prompt,
+            "image_style": persona.image_style,
+            "width": width,
+            "height": height,
+            "success": None,
+            "error": None
+        })
+        
         # Generate image
         image_data = await image_manager.generate_image(
             prompt=character_prompt,
-            negative_prompt="ugly, deformed, blurry, low quality, distorted, malformed, disfigured, bad anatomy, wrong anatomy, extra limbs, missing limbs, floating limbs, disconnected limbs, mutation, mutated, gross proportions, bad proportions, poorly drawn, cartoon, anime, sketches, worst quality, low resolution, noise, grainy",
+            negative_prompt=negative_prompt,
             width=width,
             height=height
         )
         
+        _last_image_generation["success"] = True
         logger.info(f"Image generated successfully for persona: {persona.name}")
         
         return Response(content=image_data, media_type="image/png")
         
     except Exception as e:
+        _last_image_generation["success"] = False
+        _last_image_generation["error"] = str(e)
         logger.error(f"Image generation failed: {e}")
         raise HTTPException(status_code=500, detail=f"Image generation failed: {str(e)}")
 
@@ -452,13 +472,32 @@ async def chat(request: ChatRequest):
                     if persona.image_style:
                         character_prompt += f", {persona.image_style}"
                     
+                    negative_prompt = "ugly, deformed, blurry, low quality, text, watermark, distorted, malformed, disfigured, bad anatomy, wrong anatomy, extra limbs, missing limbs, floating limbs, disconnected limbs, mutation, mutated, gross proportions, bad proportions, poorly drawn, cartoon, anime, sketches, worst quality, low resolution, noise, grainy, signature, username, artist name"
+                    
+                    # Store debug info
+                    import time
+                    _last_image_generation.update({
+                        "timestamp": time.time(),
+                        "persona": persona.name,
+                        "original_prompt": image_prompt,
+                        "full_prompt": character_prompt,
+                        "negative_prompt": negative_prompt,
+                        "image_style": persona.image_style,
+                        "width": 1024,
+                        "height": 1024,
+                        "success": None,
+                        "error": None
+                    })
+                    
                     # Generate image (this will unload Ollama internally)
                     image_data = await image_manager.generate_image(
                         prompt=character_prompt,
-                        negative_prompt="ugly, deformed, blurry, low quality, text, watermark, distorted, malformed, disfigured, bad anatomy, wrong anatomy, extra limbs, missing limbs, floating limbs, disconnected limbs, mutation, mutated, gross proportions, bad proportions, poorly drawn, cartoon, anime, sketches, worst quality, low resolution, noise, grainy, signature, username, artist name",
+                        negative_prompt=negative_prompt,
                         width=1024,
                         height=1024
                     )
+                    
+                    _last_image_generation["success"] = True
                     
                     # Save image with timestamp
                     import time
@@ -479,6 +518,8 @@ async def chat(request: ChatRequest):
             
         except Exception as e:
             logger.error(f"Image generation failed: {e}")
+            _last_image_generation["success"] = False
+            _last_image_generation["error"] = str(e)
             # Continue without image
     
     # Store AI response in memory
@@ -926,6 +967,30 @@ async def delete_ollama_model(model_name: str):
         logger.error(f"Failed to delete model: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# Store last image generation details for debugging
+_last_image_generation = {
+    "timestamp": None,
+    "persona": None,
+    "original_prompt": None,
+    "full_prompt": None,
+    "negative_prompt": None,
+    "image_style": None,
+    "width": None,
+    "height": None,
+    "success": None,
+    "error": None
+}
+
+@app.get("/comfyui/last-generation")
+async def get_last_generation():
+    """
+    Get details of the last image generation for debugging.
+    
+    Example:
+        curl http://localhost:8000/comfyui/last-generation
+    """
+    return _last_image_generation
 
 @app.post("/comfyui/restart")
 async def restart_comfyui():

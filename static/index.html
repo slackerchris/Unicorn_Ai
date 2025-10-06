@@ -449,10 +449,15 @@
                 <!-- ComfyUI Service Control -->
                 <div class="setting-group">
                     <h3>🔧 Service Control</h3>
-                    <p class="setting-description">Restart ComfyUI if image generation isn't working</p>
-                    <button class="btn btn-secondary" id="restartComfyuiBtn" style="width: 100%;">
-                        <i class="fas fa-sync-alt"></i> Restart ComfyUI
-                    </button>
+                    <p class="setting-description">Restart ComfyUI if image generation isn't working, or view debug information</p>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <button class="btn btn-secondary" id="restartComfyuiBtn">
+                            <i class="fas fa-sync-alt"></i> Restart ComfyUI
+                        </button>
+                        <button class="btn btn-secondary" id="viewDebugBtn">
+                            <i class="fas fa-bug"></i> View Debug Info
+                        </button>
+                    </div>
                 </div>
 
                 <hr style="margin: 25px 0; border: none; border-top: 1px solid var(--border-color);">
@@ -530,6 +535,24 @@
         </div>
     </div>
 
-        <script src="/static/app.js?v=13"></script>
+    <!-- Image Generation Debug Modal -->
+    <div id="debugModal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h2>🔍 Last Image Generation Details</h2>
+                <span class="close-btn" id="closeDebugBtn">&times;</span>
+            </div>
+            <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                <div id="debugContent">
+                    <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                        <i class="fas fa-spinner fa-spin fa-2x"></i>
+                        <p style="margin-top: 15px;">Loading debug information...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+        <script src="/static/app.js?v=14"></script>
     </body>
 </html>
