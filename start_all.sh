@@ -60,6 +60,7 @@ stop_services() {
     echo -e "${CYAN}🛑 Stopping any existing services...${NC}"
     pkill -f "python.*main.py" 2>/dev/null && echo "  Stopped Web UI" || true
     pkill -f "python.*telegram_bot.py" 2>/dev/null && echo "  Stopped Telegram Bot" || true
+    pkill -f "python.*tts_server.py" 2>/dev/null && echo "  Stopped TTS Service" || true
     pkill -f "python.*comfyui/main.py" 2>/dev/null && echo "  Stopped ComfyUI" || true
     sleep 2
 }
@@ -145,11 +146,49 @@ else
 fi
 
 # ==========================================
-# STEP 3: START WEB UI + API
+# STEP 3: START TTS SERVICE
 # ==========================================
 echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}🌐 STEP 3: Web UI + API Server${NC}"
+echo -e "${BLUE}🔊 STEP 3: Text-to-Speech Service${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+if [ -d "tts_service_coqui" ] && [ -f "tts_service_coqui/tts_server.py" ]; then
+    echo -e "${CYAN}🚀 Starting TTS Service...${NC}"
+    cd tts_service_coqui
+    
+    if [ -d "venv" ]; then
+        source venv/bin/activate
+        
+        echo -e "${CYAN}   Starting on port 5050${NC}"
+        nohup python tts_server.py > ../outputs/logs/tts_service.log 2>&1 &
+        
+        TTS_PID=$!
+        echo -e "${GREEN}✅ TTS Service started (PID: $TTS_PID)${NC}"
+        deactivate
+        cd ..
+        
+        # Wait for TTS to be ready
+        if wait_for_service "http://localhost:5050/health" "TTS Service"; then
+            echo -e "${GREEN}   🔊 Text-to-Speech: ENABLED${NC}"
+        else
+            echo -e "${YELLOW}   ⚠️  TTS slow to start (model loading), continuing...${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠️  TTS venv not found, skipping${NC}"
+        cd ..
+    fi
+else
+    echo -e "${YELLOW}⚠️  TTS Service not installed${NC}"
+    echo -e "${YELLOW}   Voice messages will be DISABLED${NC}"
+fi
+
+# ==========================================
+# STEP 4: START WEB UI + API
+# ==========================================
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}🌐 STEP 4: Web UI + API Server${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 echo -e "${CYAN}🚀 Starting Web UI server...${NC}"
@@ -171,11 +210,11 @@ echo -e "${GREEN}✅ Web UI started (PID: $WEBUI_PID)${NC}"
 wait_for_service "http://localhost:8000/health" "Web UI"
 
 # ==========================================
-# STEP 4: START TELEGRAM BOT (Optional)
+# STEP 5: START TELEGRAM BOT (Optional)
 # ==========================================
 echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}💬 STEP 4: Telegram Bot${NC}"
+echo -e "${BLUE}💬 STEP 5: Telegram Bot${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 if [ -f "telegram_bot.py" ]; then
@@ -208,11 +247,11 @@ else
 fi
 
 # ==========================================
-# STEP 5: SYSTEM STATUS
+# STEP 6: SYSTEM STATUS
 # ==========================================
 echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}📊 STEP 5: System Status${NC}"
+echo -e "${BLUE}📊 STEP 6: System Status${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 sleep 2
@@ -242,6 +281,13 @@ if check_port 8188; then
     echo -e "${GREEN}✅ ComfyUI:         http://localhost:8188${NC}"
 else
     echo -e "${YELLOW}⚠️  ComfyUI:         DISABLED${NC}"
+fi
+
+# Check TTS Service
+if check_port 5050; then
+    echo -e "${GREEN}✅ TTS Service:     http://localhost:5050${NC}"
+else
+    echo -e "${YELLOW}⚠️  TTS Service:     DISABLED${NC}"
 fi
 
 # Check Telegram Bot
@@ -279,11 +325,13 @@ echo ""
 echo -e "${CYAN}📝 Process IDs:${NC}"
 [ ! -z "$WEBUI_PID" ] && echo -e "  Web UI:     ${WEBUI_PID}"
 [ ! -z "$COMFYUI_PID" ] && echo -e "  ComfyUI:    ${COMFYUI_PID}"
+[ ! -z "$TTS_PID" ] && echo -e "  TTS:        ${TTS_PID}"
 [ ! -z "$TELEGRAM_PID" ] && echo -e "  Telegram:   ${TELEGRAM_PID}"
 echo ""
 echo -e "${CYAN}📁 Log Files:${NC}"
 echo -e "  outputs/logs/webui.log"
 echo -e "  outputs/logs/comfyui.log"
+echo -e "  outputs/logs/tts_service.log"
 echo -e "  outputs/logs/telegram.log"
 echo ""
 echo -e "${CYAN}🛑 To stop all services:${NC}"

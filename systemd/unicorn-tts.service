@@ -1,0 +1,17 @@
+[Unit]
+Description=Unicorn AI - TTS Service (Coqui)
+After=network.target
+
+[Service]
+Type=simple
+User=chris
+WorkingDirectory=/home/chris/Documents/Git/Unicorn_Ai/tts_service_coqui
+Environment="PATH=/home/chris/Documents/Git/Unicorn_Ai/tts_service_coqui/venv/bin:/usr/bin"
+ExecStart=/home/chris/Documents/Git/Unicorn_Ai/tts_service_coqui/venv/bin/python tts_server.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/chris/Documents/Git/Unicorn_Ai/outputs/logs/tts_service.log
+StandardError=append:/home/chris/Documents/Git/Unicorn_Ai/outputs/logs/tts_service.log
+
+[Install]
+WantedBy=multi-user.target

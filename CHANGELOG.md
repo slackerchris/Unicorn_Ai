@@ -2,6 +2,58 @@
 
 All notable changes to Unicorn AI will be documented in this file.
 
+## [0.7.0] - 2025-10-06
+
+### Image Generation Overhaul 🎨
+
+#### Added
+- **SDXL Dual-Stage Workflow** - BASE + REFINER for high-quality generation (1024x1024)
+- **Enhanced Negative Prompts** - 40+ quality control terms preventing anatomy errors, artifacts, and low quality
+- **Prompt Weighting Support** - Documentation and examples for attention control (e.g., `(eyes:1.5)`)
+- **Visual Appearance Field** - New persona editor field for describing character appearance
+- **Enhanced ComfyUI Logging** - Full prompt visibility (not truncated) with debug mode
+- **Debug Mode** - `COMFYUI_DEBUG=true` saves complete workflow JSON to `outputs/logs/`
+- **Monitoring Script** - `monitor_image_gen.sh` for real-time ComfyUI output viewing
+- **Model Manager** - Download and delete Ollama models directly from Web UI
+- **Popular Models** - One-click download for common models (dolphin-mistral, llama3, etc.)
+- **Service Status Indicators** - Real-time health monitoring of all services (10s interval)
+
+#### Changed
+- **Default Workflow** - Changed from `character_generation.json` to `sdxl_Character_profile_api.json`
+- **Workflow Negative Prompts** - Updated both BASE (node 7) and REFINER (node 16) stages
+- **Image Generation Resolution** - Now 1024x1024 (was 512x512)
+- **Persona System Prompts** - Clarified [IMAGE: ...] tag usage to prevent AI confusion
+- **Web UI Cache** - Version bumped to v11 with new features
+
+#### Fixed
+- **AI Image Confusion** - AI no longer generates images when asking user for photos
+- **Prompt Truncation** - Full prompts now visible in logs (previously limited to 50 characters)
+- **Luna Persona** - Enhanced with optimal prompt weighting examples
+
+#### Documentation
+- Added `PROMPT_WEIGHTING_GUIDE.md` - Complete guide with examples
+- Added `PROMPT_WEIGHTING_QUICK_REF.md` - Quick reference cheat sheet
+- Added `IMAGE_GENERATION_UPDATE_SUMMARY.md` - Overview of all improvements
+- Added `NEGATIVE_PROMPT_ENHANCEMENT.md` - Negative prompt details
+- Added `SDXL_WORKFLOW_UPDATE.md` - SDXL architecture explanation
+- Added `IMAGE_STYLE_FIELD_FEATURE.md` - Visual appearance field guide
+- Added `COMFYUI_PROMPT_VIEWING_GUIDE.md` - Complete logging guide
+- Added `QUICK_VIEW_COMFYUI_PROMPTS.md` - Quick reference for viewing prompts
+- Added `AI_IMAGE_CONFUSION_FIX.md` - Image generation confusion fix
+- Added `RECENT_UPDATES_SUMMARY.md` - Session summary
+
+#### Scripts
+- Added `monitor_image_gen.sh` - Real-time monitoring with color-coded output
+- Added `update_persona_prompts.py` - Utility for batch persona updates
+
+#### Technical
+- ComfyUI provider now logs full positive/negative prompts
+- Workflow JSON structure validated
+- All persona JSON files updated with clearer instructions
+- JavaScript and Python syntax validated
+
+---
+
 ## [0.4.0] - 2025-10-05
 
 ### Phase 4: Voice Messages ✅

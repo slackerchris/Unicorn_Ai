@@ -320,8 +320,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text_response = data["response"]
             has_image = data.get("has_image", False)
             image_prompt = data.get("image_prompt")
+            image_url = data.get("image_url")
             
             logger.info(f"Response: {text_response[:50]}...")
+            if image_url:
+                logger.info(f"Image generated: {image_url}")
             
             # Clean text for voice (remove [IMAGE: ...] tags)
             clean_text = text_response
@@ -354,28 +357,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Send text response
                 await update.message.reply_text(text_response)
             
-            # If there's an image, generate and send it
-            if has_image and image_prompt:
-                logger.info(f"Generating image: {image_prompt}")
+            # If there's an image, send it
+            if image_url:
+                logger.info(f"Sending image from: {image_url}")
                 await update.message.chat.send_action(ChatAction.UPLOAD_PHOTO)
                 
                 try:
-                    # Generate image
-                    img_response = await client.post(
-                        f"{API_BASE_URL}/generate-image",
-                        params={"prompt": image_prompt}
-                    )
+                    # Download the image from the local server
+                    img_response = await client.get(f"{API_BASE_URL}{image_url}")
                     img_response.raise_for_status()
                     image_data = img_response.content
                     
                     # Send image
-                    await update.message.reply_photo(photo=image_data)
+                    caption = f"🖼️ {image_prompt}" if image_prompt else None
+                    await update.message.reply_photo(
+                        photo=image_data,
+                        caption=caption
+                    )
                     logger.info("Image sent successfully")
                     
                 except Exception as e:
-                    logger.error(f"Image generation failed: {e}")
+                    logger.error(f"Failed to send image: {e}")
                     await update.message.reply_text(
-                        "Sorry, I couldn't generate the image right now 😅"
+                        "Sorry, I couldn't send the image right now 😅"
                     )
     
     except httpx.HTTPError as e:

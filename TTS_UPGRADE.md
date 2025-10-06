@@ -317,4 +317,4 @@ tts = TTS(model_name="your_model_here")
 - Web UI voice button functional
 - Easy to maintain
 
-The system is ready for voice interactions! 🎉🔊
+Voice TTS is working now. Still needs testing and voice quality improvements.

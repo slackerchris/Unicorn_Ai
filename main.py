@@ -11,7 +11,7 @@ import re
 from typing import Optional, List, Dict
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, FileResponse, HTMLResponse
+from fastapi.responses import Response, FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import httpx
@@ -32,6 +32,11 @@ logger.remove()
 logger.add(sys.stderr, level="INFO")
 logger.add("outputs/logs/unicorn_ai.log", rotation="10 MB", retention="7 days", level="DEBUG")
 
+# Global flag for image generation state
+import asyncio
+_image_generation_in_progress = False
+_image_generation_lock = asyncio.Lock()
+
 # Initialize FastAPI
 app = FastAPI(
     title="Unicorn AI",
@@ -41,6 +46,7 @@ app = FastAPI(
 
 # Mount static files for Web UI
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 
 # CORS for Web UI
 app.add_middleware(
@@ -105,6 +111,7 @@ class ChatResponse(BaseModel):
     tokens_used: Optional[int] = None
     has_image: bool = False
     image_prompt: Optional[str] = None
+    image_url: Optional[str] = None
 
 
 def get_user_profile() -> dict:
@@ -178,6 +185,22 @@ async def chat_with_ollama(message: str, persona: Persona, session_id: str = "de
     Each persona can use a different LLM model based on their role.
     Now includes memory context for conversation continuity.
     """
+    global _image_generation_in_progress
+    
+    # Wait if image generation is in progress (with timeout)
+    if _image_generation_in_progress:
+        logger.info("Waiting for image generation to complete before chat...")
+        timeout = 60  # Max 60 seconds wait
+        elapsed = 0
+        while _image_generation_in_progress and elapsed < timeout:
+            await asyncio.sleep(0.5)
+            elapsed += 0.5
+        
+        if elapsed >= timeout:
+            logger.warning("Image generation timeout - proceeding with chat anyway")
+        else:
+            logger.info("Image generation complete, resuming chat")
+    
     url = f"{OLLAMA_BASE_URL}/api/generate"
     
     # Use persona settings or defaults
@@ -299,7 +322,7 @@ async def generate_image(prompt: str, width: int = 512, height: int = 512, perso
         # Generate image
         image_data = await image_manager.generate_image(
             prompt=character_prompt,
-            negative_prompt="ugly, deformed, blurry, low quality",
+            negative_prompt="ugly, deformed, blurry, low quality, distorted, malformed, disfigured, bad anatomy, wrong anatomy, extra limbs, missing limbs, floating limbs, disconnected limbs, mutation, mutated, gross proportions, bad proportions, poorly drawn, cartoon, anime, sketches, worst quality, low resolution, noise, grainy",
             width=width,
             height=height
         )
@@ -405,12 +428,57 @@ async def chat(request: ChatRequest):
     # Check if response contains image request
     has_image = False
     image_prompt = None
+    image_url = None
     image_match = re.search(r'\[IMAGE:\s*([^\]]+)\]', ai_response, re.IGNORECASE)
     
     if image_match:
         has_image = True
         image_prompt = image_match.group(1).strip()
         logger.info(f"Image requested: {image_prompt}")
+        
+        # Generate the image
+        global _image_generation_in_progress
+        
+        try:
+            # Acquire lock to ensure only one image at a time
+            async with _image_generation_lock:
+                _image_generation_in_progress = True
+                logger.info("Image generation started - Ollama models will be unloaded")
+                
+                try:
+                    # Build character-consistent prompt using persona details
+                    character_prompt = f"{persona.name}, {persona.description}, {image_prompt}"
+                    if persona.image_style:
+                        character_prompt += f", {persona.image_style}"
+                    
+                    # Generate image (this will unload Ollama internally)
+                    image_data = await image_manager.generate_image(
+                        prompt=character_prompt,
+                        negative_prompt="ugly, deformed, blurry, low quality, text, watermark, distorted, malformed, disfigured, bad anatomy, wrong anatomy, extra limbs, missing limbs, floating limbs, disconnected limbs, mutation, mutated, gross proportions, bad proportions, poorly drawn, cartoon, anime, sketches, worst quality, low resolution, noise, grainy, signature, username, artist name",
+                        width=1024,
+                        height=1024
+                    )
+                    
+                    # Save image with timestamp
+                    import time
+                    timestamp = int(time.time())
+                    filename = f"{persona.id}_{timestamp}.png"
+                    filepath = f"outputs/generated_images/{filename}"
+                    
+                    with open(filepath, 'wb') as f:
+                        f.write(image_data)
+                    
+                    image_url = f"/outputs/generated_images/{filename}"
+                    logger.info(f"Image saved: {filepath}")
+                    
+                finally:
+                    # Always clear flag even if generation fails
+                    _image_generation_in_progress = False
+                    logger.info("Image generation complete - Ollama will reload on next chat")
+            
+        except Exception as e:
+            logger.error(f"Image generation failed: {e}")
+            # Continue without image
     
     # Store AI response in memory
     memory_manager.add_message(
@@ -428,7 +496,8 @@ async def chat(request: ChatRequest):
         model=persona.model,
         tokens_used=result.get("eval_count", 0),
         has_image=has_image,
-        image_prompt=image_prompt
+        image_prompt=image_prompt,
+        image_url=image_url
     )
 
 
@@ -492,6 +561,7 @@ async def get_persona(persona_id: str):
         "speaking_style": persona.speaking_style,
         "temperature": persona.temperature,
         "max_tokens": persona.max_tokens,
+        "model": persona.model,
         "voice": persona.voice,
         "image_style": persona.image_style,
         "reference_image": persona.reference_image,
@@ -590,6 +660,7 @@ async def create_persona_endpoint(request: CreatePersonaRequest):
                 "personality_traits": persona.personality_traits,
                 "speaking_style": persona.speaking_style,
                 "voice": persona.voice,
+                "model": persona.model,
                 "temperature": persona.temperature,
                 "max_tokens": persona.max_tokens
             }
@@ -642,6 +713,7 @@ async def update_persona_endpoint(persona_id: str, request: CreatePersonaRequest
                 "personality_traits": persona.personality_traits,
                 "speaking_style": persona.speaking_style,
                 "voice": persona.voice,
+                "model": persona.model,
                 "temperature": persona.temperature,
                 "max_tokens": persona.max_tokens
             }
@@ -748,6 +820,105 @@ async def delete_persona_endpoint(persona_id: str):
     except Exception as e:
         logger.error(f"Failed to delete persona: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete persona")
+
+
+# ==========================================
+# OLLAMA MODEL MANAGEMENT
+# ==========================================
+
+@app.get("/ollama/models")
+async def get_ollama_models():
+    """
+    Get list of available Ollama models.
+    
+    Example:
+        curl http://localhost:8000/ollama/models
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get("http://localhost:11434/api/tags")
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    "success": True,
+                    "models": data.get("models", [])
+                }
+            else:
+                raise HTTPException(status_code=502, detail="Failed to connect to Ollama")
+    except Exception as e:
+        logger.error(f"Failed to get Ollama models: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/ollama/pull")
+async def pull_ollama_model(request: dict):
+    """
+    Pull/download a new Ollama model.
+    
+    This streams the download progress from Ollama.
+    
+    Example:
+        curl -X POST http://localhost:8000/ollama/pull \
+          -H "Content-Type: application/json" \
+          -d '{"model": "llama3.2:latest"}'
+    """
+    try:
+        model_name = request.get("model")
+        if not model_name:
+            raise HTTPException(status_code=400, detail="Model name is required")
+        
+        logger.info(f"📥 Starting download of model: {model_name}")
+        
+        # Use streaming to get real-time progress
+        async def stream_pull():
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream(
+                    "POST",
+                    "http://localhost:11434/api/pull",
+                    json={"name": model_name}
+                ) as response:
+                    async for line in response.aiter_lines():
+                        if line:
+                            yield f"data: {line}\n\n"
+        
+        return StreamingResponse(
+            stream_pull(),
+            media_type="text/event-stream"
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to pull model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/ollama/models/{model_name:path}")
+async def delete_ollama_model(model_name: str):
+    """
+    Delete an Ollama model.
+    
+    Example:
+        curl -X DELETE http://localhost:8000/ollama/models/llama3.2:latest
+    """
+    try:
+        logger.info(f"🗑️ Deleting model: {model_name}")
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                "http://localhost:11434/api/delete",
+                json={"name": model_name}
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"✅ Model deleted: {model_name}")
+                return {
+                    "success": True,
+                    "message": f"Model '{model_name}' deleted successfully"
+                }
+            else:
+                raise HTTPException(status_code=502, detail="Failed to delete model from Ollama")
+    except Exception as e:
+        logger.error(f"Failed to delete model: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/", response_class=HTMLResponse)

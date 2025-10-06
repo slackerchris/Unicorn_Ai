@@ -13,21 +13,188 @@ class UnicornAI {
             messageCount: 0,
             responseTimes: []
         };
-        this.sessionId = this.generateSessionId();  // Unique session ID for memory
+        this.sessions = this.loadSessions();  // Load all saved sessions
+        this.currentSessionId = this.getCurrentSessionId();  // Get current or create new
+        this.sessionId = this.currentSessionId;  // Unique session ID for memory
         this.memoryEnabled = true;  // Memory on by default
         this.currentAudio = null;  // Track currently playing audio
         
         this.init();
     }
     
-    generateSessionId() {
-        // Generate or retrieve session ID from localStorage
-        let sessionId = localStorage.getItem('unicornAI_sessionId');
-        if (!sessionId) {
-            sessionId = 'web_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            localStorage.setItem('unicornAI_sessionId', sessionId);
+    // ===== Session Management =====
+    loadSessions() {
+        try {
+            const sessionsData = localStorage.getItem('unicornAI_sessions');
+            return sessionsData ? JSON.parse(sessionsData) : [];
+        } catch (error) {
+            console.error('Error loading sessions:', error);
+            return [];
         }
+    }
+
+    saveSessions() {
+        try {
+            localStorage.setItem('unicornAI_sessions', JSON.stringify(this.sessions));
+        } catch (error) {
+            console.error('Error saving sessions:', error);
+        }
+    }
+
+    getCurrentSessionId() {
+        const currentId = localStorage.getItem('unicornAI_currentSession');
+        if (currentId && this.sessions.find(s => s.id === currentId)) {
+            return currentId;
+        }
+        // Create default session if none exists
+        return this.createNewSession();
+    }
+
+    createNewSession() {
+        console.log('createNewSession() called');
+        console.log('Current sessions:', this.sessions);
+        const sessionId = 'web_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        const session = {
+            id: sessionId,
+            name: `Chat ${this.sessions.length + 1}`,
+            created: new Date().toISOString(),
+            lastUpdated: new Date().toISOString(),
+            messageCount: 0,
+            personaId: this.currentPersona?.id || 'luna'  // Save current persona
+        };
+        this.sessions.push(session);
+        console.log('New session created:', session);
+        this.saveSessions();
+        localStorage.setItem('unicornAI_currentSession', sessionId);
+        console.log('Sessions after create:', this.sessions);
         return sessionId;
+    }
+
+    switchToSession(sessionId) {
+        console.log('switchToSession() called with:', sessionId);
+        // Save current chat before switching
+        if (this.currentSessionId) {
+            console.log('Saving current session:', this.currentSessionId);
+            // Update current session's persona before saving
+            const currentSession = this.sessions.find(s => s.id === this.currentSessionId);
+            if (currentSession) {
+                currentSession.personaId = this.currentPersona?.id;
+                this.saveSessions();
+            }
+            this.saveChatHistory();
+        }
+        
+        // Switch to new session
+        this.currentSessionId = sessionId;
+        this.sessionId = sessionId;
+        localStorage.setItem('unicornAI_currentSession', sessionId);
+        console.log('Switched to session:', sessionId);
+        
+        // Load session's persona
+        const session = this.sessions.find(s => s.id === sessionId);
+        if (session && session.personaId) {
+            console.log('Restoring persona:', session.personaId);
+            const persona = this.personas.find(p => p.id === session.personaId);
+            if (persona) {
+                this.currentPersona = persona;
+                this.personaSelector.value = session.personaId;
+            }
+        }
+        
+        // Load new session's chat history
+        this.messages = [];
+        this.chatMessages.innerHTML = '';
+        console.log('Cleared messages, loading history...');
+        this.loadChatHistory();
+        
+        // Update UI
+        console.log('Rendering sessions list...');
+        this.renderSessionsList();
+        console.log('Updating header...');
+        const sessionNameEl = document.getElementById('currentSessionName');
+        if (sessionNameEl && session) {
+            sessionNameEl.textContent = session.name;
+        }
+        console.log('Adding system message...');
+        this.addSystemMessage(`Switched to ${session?.name || 'session'}`);
+        console.log('switchToSession() complete');
+    }
+
+    deleteSession(sessionId) {
+        if (this.sessions.length === 1) {
+            alert('Cannot delete the last session!');
+            return;
+        }
+        
+        if (!confirm('Delete this chat session? This cannot be undone.')) {
+            return;
+        }
+        
+        // Remove session
+        this.sessions = this.sessions.filter(s => s.id !== sessionId);
+        this.saveSessions();
+        
+        // Clear localStorage for this session
+        localStorage.removeItem(`unicornAI_chatHistory_${sessionId}`);
+        
+        // If we deleted the current session, switch to first available
+        if (sessionId === this.currentSessionId) {
+            this.switchToSession(this.sessions[0].id);
+        } else {
+            this.renderSessionsList();
+        }
+    }
+
+    renameSession(sessionId, newName) {
+        const session = this.sessions.find(s => s.id === sessionId);
+        if (session) {
+            session.name = newName;
+            session.lastUpdated = new Date().toISOString();
+            this.saveSessions();
+            this.renderSessionsList();
+        }
+    }
+
+    renderSessionsList() {
+        const sessionsList = document.getElementById('sessionsList');
+        if (!sessionsList) return;
+        
+        sessionsList.innerHTML = this.sessions.map(session => {
+            const isActive = session.id === this.currentSessionId;
+            const date = new Date(session.lastUpdated);
+            const timeStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            
+            return `
+                <div class="session-item ${isActive ? 'active' : ''}" data-session-id="${session.id}">
+                    <div class="session-info">
+                        <div class="session-name">${session.name}</div>
+                        <div class="session-meta">${session.messageCount || 0} msgs • ${timeStr}</div>
+                    </div>
+                    <button class="session-delete" data-delete-session="${session.id}">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `;
+        }).join('');
+        
+        // Attach event listeners to session items
+        sessionsList.querySelectorAll('.session-item').forEach(item => {
+            const sessionId = item.getAttribute('data-session-id');
+            item.addEventListener('click', (e) => {
+                // Don't switch if clicking delete button
+                if (e.target.closest('.session-delete')) return;
+                this.switchToSession(sessionId);
+            });
+        });
+        
+        // Attach event listeners to delete buttons
+        sessionsList.querySelectorAll('.session-delete').forEach(btn => {
+            const sessionId = btn.getAttribute('data-delete-session');
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.deleteSession(sessionId);
+            });
+        });
     }
 
     // ===== Initialization =====
@@ -35,8 +202,10 @@ class UnicornAI {
         this.setupElements();
         this.setupEventListeners();
         await this.checkSystemStatus();
-        await this.loadPersonas();
+        await this.loadPersonas();  // Load personas first
         await this.loadAvailableModels();
+        this.loadChatHistory();  // Load previous chat history
+        this.renderSessionsList();  // Render sessions list after personas loaded
         this.applySettings();
         this.startStatusCheck();
     }
@@ -48,6 +217,7 @@ class UnicornAI {
         this.editPersonaBtn = document.getElementById('editPersonaBtn');
         this.deletePersonaBtn = document.getElementById('deletePersonaBtn');
         this.createPersonaBtn = document.getElementById('createPersonaBtn');
+        this.newSessionBtn = document.getElementById('newSessionBtn');
         this.clearChatBtn = document.getElementById('clearChatBtn');
         this.voiceModeBtn = document.getElementById('voiceModeBtn');
         this.memoryModeBtn = document.getElementById('memoryModeBtn');
@@ -84,6 +254,12 @@ class UnicornAI {
         this.cancelCreatePersonaBtn = document.getElementById('cancelCreatePersonaBtn');
         this.createPersonaForm = document.getElementById('createPersonaForm');
         
+        // Model Manager Modal
+        this.modelManagerBtn = document.getElementById('modelManagerBtn');
+        this.modelManagerModal = document.getElementById('modelManagerModal');
+        this.downloadModelBtn = document.getElementById('downloadModelBtn');
+        this.modelNameInput = document.getElementById('modelNameInput');
+        
         // Mobile menu
         this.mobileMenuBtn = document.getElementById('mobileMenuBtn');
         this.sidebarToggle = document.getElementById('sidebarToggle');
@@ -102,13 +278,33 @@ class UnicornAI {
         
         // Sidebar actions
         this.createPersonaBtn.addEventListener('click', () => this.openCreatePersona());
+        if (this.newSessionBtn) {
+            this.newSessionBtn.addEventListener('click', () => {
+                console.log('New Session clicked');
+                const sessionId = this.createNewSession();
+                console.log('Created session:', sessionId);
+                this.switchToSession(sessionId);
+            });
+        } else {
+            console.error('newSessionBtn not found!');
+        }
         this.editPersonaBtn.addEventListener('click', () => this.editCurrentPersona());
         this.deletePersonaBtn.addEventListener('click', () => this.deleteCurrentPersona());
         this.clearChatBtn.addEventListener('click', () => this.clearChat());
         this.voiceModeBtn.addEventListener('click', () => this.toggleVoiceMode());
         this.memoryModeBtn.addEventListener('click', () => this.toggleMemoryMode());
         this.userProfileBtn.addEventListener('click', () => this.openUserProfile());
+        this.modelManagerBtn.addEventListener('click', () => this.openModelManager());
         this.settingsBtn.addEventListener('click', () => this.openSettings());
+        
+        // Model Manager modal
+        this.downloadModelBtn.addEventListener('click', () => this.downloadModel());
+        this.modelManagerModal.querySelector('.close-modal').addEventListener('click', () => this.closeModelManager());
+        this.modelManagerModal.addEventListener('click', (e) => {
+            if (e.target === this.modelManagerModal) {
+                this.closeModelManager();
+            }
+        });
         
         // User Profile modal
         this.closeUserProfileBtn.addEventListener('click', () => this.closeUserProfile());
@@ -166,28 +362,65 @@ class UnicornAI {
 
     // ===== System Status =====
     async checkSystemStatus() {
+        // Check Ollama
+        this.checkServiceStatus(
+            'http://localhost:11434/api/tags',
+            'ollamaStatus',
+            'Ollama'
+        );
+        
+        // Check ComfyUI
+        this.checkServiceStatus(
+            'http://localhost:8188/system_stats',
+            'comfyuiStatus',
+            'ComfyUI'
+        );
+        
+        // Check TTS
+        this.checkServiceStatus(
+            'http://localhost:5050/health',
+            'ttsStatus',
+            'TTS'
+        );
+    }
+
+    async checkServiceStatus(url, elementId, serviceName) {
+        const element = document.getElementById(elementId);
+        if (!element) return;
+        
+        // Set to checking state
+        element.className = 'status-indicator checking';
+        
         try {
-            const response = await fetch(`${this.apiBase}/health`);
+            const response = await fetch(url, { 
+                method: 'GET',
+                signal: AbortSignal.timeout(3000) // 3 second timeout
+            });
+            
             if (response.ok) {
-                this.updateSystemStatus(true);
+                element.className = 'status-indicator online';
             } else {
-                this.updateSystemStatus(false);
+                element.className = 'status-indicator offline';
             }
         } catch (error) {
-            this.updateSystemStatus(false);
+            element.className = 'status-indicator offline';
         }
     }
 
     updateSystemStatus(isOnline) {
-        this.systemStatus.className = `status-indicator ${isOnline ? 'online' : 'offline'}`;
-        this.systemStatus.innerHTML = `
-            <i class="fas fa-circle"></i>
-            <span>${isOnline ? 'System Online' : 'System Offline'}</span>
-        `;
+        // Legacy function - kept for compatibility
+        const systemStatus = document.getElementById('systemStatus');
+        if (systemStatus) {
+            systemStatus.className = `status-indicator ${isOnline ? 'online' : 'offline'}`;
+            systemStatus.innerHTML = `
+                <i class="fas fa-circle"></i>
+                <span>${isOnline ? 'System Online' : 'System Offline'}</span>
+            `;
+        }
     }
 
     startStatusCheck() {
-        setInterval(() => this.checkSystemStatus(), 30000); // Check every 30s
+        setInterval(() => this.checkSystemStatus(), 10000); // Check every 10s
     }
 
     // ===== Personas =====
@@ -331,6 +564,8 @@ class UnicornAI {
     }
 
     updateCurrentPersonaDisplay() {
+        if (!this.currentPersona) return;
+        
         const personaIcons = {
             'luna': '🌙',
             'nova': '💻',
@@ -339,9 +574,15 @@ class UnicornAI {
         };
         
         const icon = personaIcons[this.currentPersona.id] || '🦄';
-        this.currentPersonaInfo.querySelector('.persona-avatar').textContent = icon;
-        document.getElementById('currentPersonaName').textContent = this.currentPersona.name;
-        document.getElementById('currentPersonaDescription').textContent = this.currentPersona.description;
+        
+        // Update avatar if element exists
+        const avatarEl = this.currentPersonaInfo?.querySelector('.persona-avatar');
+        if (avatarEl) {
+            avatarEl.textContent = icon;
+        }
+        
+        // Note: Header now shows session name, not persona details
+        // Persona info is shown in the sidebar persona selector
     }
 
     // ===== Chat =====
@@ -394,7 +635,9 @@ class UnicornAI {
             const messageEl = this.addMessage('ai', data.response, {
                 hasImage: data.has_image,
                 imagePrompt: data.image_prompt,
-                responseTime: responseTime
+                imageUrl: data.image_url,
+                responseTime: responseTime,
+                model: data.model  // Include model info
             });
             
             // Handle voice mode - add audio controls to this message
@@ -427,6 +670,9 @@ class UnicornAI {
         
         this.messages.push(message);
         const messageEl = this.renderMessage(message);
+        
+        // Save to localStorage
+        this.saveChatHistory();
         
         if (this.settings.autoScroll) {
             this.scrollToBottom();
@@ -463,7 +709,14 @@ class UnicornAI {
                     <span class="message-time">${time}</span>
                 </div>
                 <div class="message-bubble">${this.formatMessage(message.text)}</div>
-                ${message.hasImage ? `
+                ${message.imageUrl ? `
+                    <div class="message-image">
+                        <img src="${message.imageUrl}" alt="${message.imagePrompt || 'Generated image'}" 
+                             style="max-width: 100%; border-radius: 8px; margin-top: 8px; cursor: pointer;"
+                             onclick="window.open('${message.imageUrl}', '_blank')">
+                        ${message.imagePrompt ? `<p style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 4px;">🖼️ ${message.imagePrompt}</p>` : ''}
+                    </div>
+                ` : message.hasImage ? `
                     <div class="message-image-placeholder">
                         <p>🖼️ Image: ${message.imagePrompt}</p>
                         <p style="font-size: 0.875rem; color: var(--text-secondary);">
@@ -471,9 +724,10 @@ class UnicornAI {
                         </p>
                     </div>
                 ` : ''}
-                ${message.responseTime ? `
+                ${message.responseTime || message.model ? `
                     <div class="message-meta">
-                        <span>⚡ ${message.responseTime}s</span>
+                        ${message.responseTime ? `<span>⚡ ${message.responseTime}s</span>` : ''}
+                        ${message.model ? `<span>🤖 ${message.model}</span>` : ''}
                     </div>
                 ` : ''}
             </div>
@@ -519,6 +773,82 @@ class UnicornAI {
         }
     }
 
+    // ===== Chat History =====
+    saveChatHistory() {
+        // Save messages to localStorage for persistence (per session)
+        try {
+            const chatData = {
+                messages: this.messages.map(msg => ({
+                    sender: msg.sender,
+                    text: msg.text,
+                    timestamp: msg.timestamp.toISOString(),
+                    persona: msg.persona,
+                    hasImage: msg.hasImage,
+                    imagePrompt: msg.imagePrompt,
+                    imageUrl: msg.imageUrl,
+                    responseTime: msg.responseTime,
+                    model: msg.model
+                })),
+                persona: this.currentPersona?.id,
+                sessionId: this.sessionId,
+                lastUpdated: new Date().toISOString()
+            };
+            localStorage.setItem(`unicornAI_chatHistory_${this.sessionId}`, JSON.stringify(chatData));
+            
+            // Update session metadata
+            const session = this.sessions.find(s => s.id === this.sessionId);
+            if (session) {
+                session.messageCount = this.messages.filter(m => m.sender === 'user').length;
+                session.lastUpdated = new Date().toISOString();
+                this.saveSessions();
+            }
+            
+            console.log('Chat history saved for session:', this.sessionId);
+        } catch (error) {
+            console.error('Error saving chat history:', error);
+        }
+    }
+
+    loadChatHistory() {
+        // Load messages from localStorage for current session
+        try {
+            const chatData = localStorage.getItem(`unicornAI_chatHistory_${this.sessionId}`);
+            if (!chatData) {
+                console.log('No chat history found for session:', this.sessionId);
+                // Show welcome message for new session
+                this.chatMessages.innerHTML = `
+                    <div class="welcome-message">
+                        <div class="welcome-icon">🦄</div>
+                        <h2>Welcome to Unicorn AI</h2>
+                        <p>Start chatting with ${this.currentPersona?.name || 'your AI companion'}!</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            const data = JSON.parse(chatData);
+            
+            this.messages = data.messages.map(msg => ({
+                ...msg,
+                timestamp: new Date(msg.timestamp)
+            }));
+            
+            // Re-render all messages
+            this.chatMessages.innerHTML = '';
+            this.messages.forEach(msg => {
+                this.renderMessage(msg);
+            });
+            
+            // Update stats
+            this.stats.messageCount = this.messages.filter(m => m.sender === 'user').length;
+            this.updateStatsDisplay();
+            
+            console.log(`Loaded ${this.messages.length} messages from history`);
+        } catch (error) {
+            console.error('Error loading chat history:', error);
+        }
+    }
+
     async clearChat() {
         if (confirm('Are you sure you want to clear the chat history? This will also clear conversation memory.')) {
             this.messages = [];
@@ -532,6 +862,18 @@ class UnicornAI {
             this.stats.messageCount = 0;
             this.stats.responseTimes = [];
             this.updateStatsDisplay();
+            
+            // Clear localStorage for this session
+            localStorage.removeItem(`unicornAI_chatHistory_${this.sessionId}`);
+            
+            // Update session metadata
+            const session = this.sessions.find(s => s.id === this.sessionId);
+            if (session) {
+                session.messageCount = 0;
+                session.lastUpdated = new Date().toISOString();
+                this.saveSessions();
+                this.renderSessionsList();
+            }
             
             // Clear memory on backend
             try {
@@ -935,6 +1277,7 @@ class UnicornAI {
         document.getElementById('personaSpeakingStyle').value = this.currentPersona.speaking_style;
         document.getElementById('personaModel').value = this.currentPersona.model || 'dolphin-mistral:latest';
         document.getElementById('personaVoice').value = this.currentPersona.voice;
+        document.getElementById('personaImageStyle').value = this.currentPersona.image_style || '';
         document.getElementById('personaTemperature').value = this.currentPersona.temperature;
         document.getElementById('personaTemperatureValue').textContent = this.currentPersona.temperature;
         document.getElementById('personaMaxTokens').value = this.currentPersona.max_tokens;
@@ -962,6 +1305,7 @@ class UnicornAI {
         const speakingStyleEl = form.querySelector('#personaSpeakingStyle');
         const modelEl = form.querySelector('#personaModel');
         const voiceEl = form.querySelector('#personaVoice');
+        const imageStyleEl = form.querySelector('#personaImageStyle');
         const temperatureEl = form.querySelector('#personaTemperature');
         const maxTokensEl = form.querySelector('#personaMaxTokens');
         
@@ -975,6 +1319,7 @@ class UnicornAI {
                 traits: !!traitsEl,
                 speakingStyle: !!speakingStyleEl,
                 voice: !!voiceEl,
+                imageStyle: !!imageStyleEl,
                 temperature: !!temperatureEl,
                 maxTokens: !!maxTokensEl
             });
@@ -988,6 +1333,7 @@ class UnicornAI {
         const speakingStyle = speakingStyleEl.value.trim();
         const model = modelEl.value;
         const voice = voiceEl.value;
+        const imageStyle = imageStyleEl.value.trim();
         const temperature = parseFloat(temperatureEl.value);
         const maxTokens = parseInt(maxTokensEl.value);
         
@@ -1025,6 +1371,7 @@ class UnicornAI {
                     speaking_style: speakingStyle,
                     model: model,
                     voice: voice,
+                    image_style: imageStyle,
                     temperature: temperature,
                     max_tokens: maxTokens
                 })
@@ -1130,6 +1477,244 @@ class UnicornAI {
         
         oscillator.start(audioContext.currentTime);
         oscillator.stop(audioContext.currentTime + 0.1);
+    }
+
+    // ===== Model Manager =====
+    async openModelManager() {
+        this.modelManagerModal.classList.add('active');
+        this.loadPopularModels();
+        await this.loadInstalledModels();
+    }
+
+    closeModelManager() {
+        this.modelManagerModal.classList.remove('active');
+    }
+
+    loadPopularModels() {
+        const popularModels = [
+            {
+                name: 'llama3.2:latest',
+                displayName: 'Llama 3.2',
+                size: '2GB',
+                description: 'Meta\'s latest Llama model, great all-rounder'
+            },
+            {
+                name: 'mistral:7b',
+                displayName: 'Mistral 7B',
+                size: '4.1GB',
+                description: 'Powerful 7B parameter model, excellent performance'
+            },
+            {
+                name: 'phi3:mini',
+                displayName: 'Phi-3 Mini',
+                size: '2.3GB',
+                description: 'Microsoft\'s compact model, fast and efficient'
+            },
+            {
+                name: 'gemma2:2b',
+                displayName: 'Gemma 2 2B',
+                size: '1.6GB',
+                description: 'Google\'s lightweight model, very fast'
+            },
+            {
+                name: 'qwen2.5:7b',
+                displayName: 'Qwen 2.5 7B',
+                size: '4.7GB',
+                description: 'Alibaba\'s multilingual model with coding skills'
+            },
+            {
+                name: 'codellama:7b',
+                displayName: 'Code Llama 7B',
+                size: '3.8GB',
+                description: 'Specialized for code generation and completion'
+            }
+        ];
+
+        const listEl = document.getElementById('popularModelsList');
+        listEl.innerHTML = popularModels.map(model => `
+            <div class="model-item" style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; cursor: pointer; transition: all 0.2s;" 
+                 onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 8px rgba(0,0,0,0.2)';"
+                 onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none';"
+                 onclick="app.downloadPopularModel('${model.name}')">
+                <div style="font-weight: 600; color: var(--primary-color); margin-bottom: 4px;">${model.displayName}</div>
+                <div style="font-size: 0.85em; color: var(--text-secondary); margin-bottom: 4px;">${model.size}</div>
+                <div style="font-size: 0.8em; color: var(--text-secondary); line-height: 1.3;">${model.description}</div>
+                <div style="margin-top: 8px; text-align: center;">
+                    <i class="fas fa-download" style="color: var(--primary-color);"></i>
+                    <span style="font-size: 0.85em; color: var(--primary-color); margin-left: 4px;">Click to Download</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    async downloadPopularModel(modelName) {
+        // Set the model name in the input field
+        const modelNameInput = document.getElementById('modelNameInput');
+        modelNameInput.value = modelName;
+        
+        // Trigger the download
+        await this.downloadModel();
+    }
+
+    async loadInstalledModels() {
+        const listEl = document.getElementById('installedModelsList');
+        
+        try {
+            listEl.innerHTML = '<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+            
+            const response = await fetch(`${this.apiBase}/ollama/models`);
+            if (!response.ok) throw new Error('Failed to load models');
+            
+            const data = await response.json();
+            const models = data.models || [];
+            
+            if (models.length === 0) {
+                listEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">No models installed</div>';
+                return;
+            }
+            
+            listEl.innerHTML = models.map(model => {
+                const sizeGB = (model.size / (1024 * 1024 * 1024)).toFixed(2);
+                const modifiedDate = new Date(model.modified_at).toLocaleDateString();
+                
+                return `
+                    <div class="model-item" style="background: var(--bg-secondary); padding: 15px; border-radius: 8px; margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600; margin-bottom: 5px;">${model.name}</div>
+                                <div style="font-size: 0.875rem; color: var(--text-secondary);">
+                                    📦 ${sizeGB} GB • 📅 ${modifiedDate}
+                                    ${model.details?.parameter_size ? `• 🧠 ${model.details.parameter_size}` : ''}
+                                </div>
+                            </div>
+                            <button class="btn btn-danger btn-small" onclick="window.unicornAI.deleteModel('${model.name}')" style="margin-left: 10px;">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+        } catch (error) {
+            console.error('Error loading models:', error);
+            listEl.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--error-color);">Failed to load models</div>';
+        }
+    }
+
+    async downloadModel() {
+        const modelName = this.modelNameInput.value.trim();
+        
+        if (!modelName) {
+            this.showError('Please enter a model name');
+            return;
+        }
+        
+        const progressDiv = document.getElementById('downloadProgress');
+        const statusEl = document.getElementById('downloadStatus');
+        const percentEl = document.getElementById('downloadPercent');
+        const progressBar = document.getElementById('downloadProgressBar');
+        const detailsEl = document.getElementById('downloadDetails');
+        const downloadBtn = this.downloadModelBtn;
+        
+        try {
+            progressDiv.style.display = 'block';
+            downloadBtn.disabled = true;
+            downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Downloading...';
+            
+            statusEl.textContent = 'Starting download...';
+            percentEl.textContent = '0%';
+            progressBar.style.width = '0%';
+            detailsEl.textContent = '';
+            
+            const response = await fetch(`${this.apiBase}/ollama/pull`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: modelName })
+            });
+            
+            if (!response.ok) throw new Error('Failed to start download');
+            
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                const text = decoder.decode(value);
+                const lines = text.split('\n').filter(line => line.trim());
+                
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.substring(6));
+                            
+                            if (data.status) {
+                                statusEl.textContent = data.status;
+                            }
+                            
+                            if (data.completed && data.total) {
+                                const percent = Math.round((data.completed / data.total) * 100);
+                                percentEl.textContent = `${percent}%`;
+                                progressBar.style.width = `${percent}%`;
+                                
+                                const completedMB = (data.completed / (1024 * 1024)).toFixed(1);
+                                const totalMB = (data.total / (1024 * 1024)).toFixed(1);
+                                detailsEl.textContent = `${completedMB} MB / ${totalMB} MB`;
+                            }
+                            
+                            if (data.status === 'success') {
+                                statusEl.textContent = '✅ Download complete!';
+                                percentEl.textContent = '100%';
+                                progressBar.style.width = '100%';
+                                this.modelNameInput.value = '';
+                                await this.loadInstalledModels();
+                                await this.loadAvailableModels(); // Refresh persona editor dropdown
+                                
+                                setTimeout(() => {
+                                    progressDiv.style.display = 'none';
+                                }, 3000);
+                            }
+                        } catch (e) {
+                            console.error('Error parsing progress:', e);
+                        }
+                    }
+                }
+            }
+            
+        } catch (error) {
+            console.error('Error downloading model:', error);
+            statusEl.textContent = '❌ Download failed';
+            detailsEl.textContent = error.message;
+            this.showError('Failed to download model: ' + error.message);
+        } finally {
+            downloadBtn.disabled = false;
+            downloadBtn.innerHTML = '<i class="fas fa-download"></i> Download';
+        }
+    }
+
+    async deleteModel(modelName) {
+        if (!confirm(`Delete model "${modelName}"?\n\nThis will permanently remove the model from your system.`)) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${this.apiBase}/ollama/models/${encodeURIComponent(modelName)}`, {
+                method: 'DELETE'
+            });
+            
+            if (!response.ok) throw new Error('Failed to delete model');
+            
+            const data = await response.json();
+            this.addSystemMessage(`🗑️ Deleted model: ${modelName}`);
+            
+            await this.loadInstalledModels();
+            await this.loadAvailableModels(); // Refresh persona editor dropdown
+            
+        } catch (error) {
+            console.error('Error deleting model:', error);
+            this.showError('Failed to delete model: ' + error.message);
+        }
     }
 }
 

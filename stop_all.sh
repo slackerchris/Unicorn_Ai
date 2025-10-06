@@ -40,6 +40,7 @@ stop_process() {
 # Stop all services
 stop_process "Web UI" "python.*main.py"
 stop_process "Telegram Bot" "python.*telegram_bot.py"
+stop_process "TTS Service" "python.*tts_server.py"
 stop_process "ComfyUI" "python.*comfyui/main.py"
 
 echo ""

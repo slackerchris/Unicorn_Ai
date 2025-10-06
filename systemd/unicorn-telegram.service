@@ -1,0 +1,18 @@
+[Unit]
+Description=Unicorn AI - Telegram Bot
+After=network.target unicorn-api.service
+Wants=unicorn-api.service
+
+[Service]
+Type=simple
+User=chris
+WorkingDirectory=/home/chris/Documents/Git/Unicorn_Ai
+Environment="PATH=/home/chris/Documents/Git/Unicorn_Ai/venv/bin:/usr/bin"
+ExecStart=/home/chris/Documents/Git/Unicorn_Ai/venv/bin/python telegram_bot.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/chris/Documents/Git/Unicorn_Ai/outputs/logs/telegram_bot.log
+StandardError=append:/home/chris/Documents/Git/Unicorn_Ai/outputs/logs/telegram_bot.log
+
+[Install]
+WantedBy=multi-user.target

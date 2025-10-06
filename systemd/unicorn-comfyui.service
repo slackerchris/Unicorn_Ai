@@ -1,0 +1,17 @@
+[Unit]
+Description=Unicorn AI - ComfyUI Image Generation
+After=network.target
+
+[Service]
+Type=simple
+User=chris
+WorkingDirectory=/home/chris/Documents/Git/Unicorn_Ai/comfyui
+Environment="PATH=/home/chris/Documents/Git/Unicorn_Ai/comfyui/venv/bin:/usr/bin"
+ExecStart=/home/chris/Documents/Git/Unicorn_Ai/comfyui/venv/bin/python main.py --listen 0.0.0.0 --port 8188
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/chris/Documents/Git/Unicorn_Ai/outputs/logs/comfyui.log
+StandardError=append:/home/chris/Documents/Git/Unicorn_Ai/outputs/logs/comfyui.log
+
+[Install]
+WantedBy=multi-user.target

@@ -21,7 +21,7 @@ class ComfyUIProvider(ImageProvider):
         self.base_url = os.getenv("COMFYUI_URL", "http://localhost:8188")
         self.workflow_path = os.getenv(
             "COMFYUI_WORKFLOW",
-            "workflows/character_generation.json"
+            "workflows/sdxl_Character_profile_api.json"
         )
         self.reference_image = os.getenv(
             "REFERENCE_IMAGE",
@@ -38,16 +38,28 @@ class ComfyUIProvider(ImageProvider):
     ) -> bytes:
         """Generate image using ComfyUI API"""
         
-        logger.info(f"Generating image with ComfyUI: {prompt[:50]}...")
+        logger.info(f"=== ComfyUI Image Generation Request ===")
+        logger.info(f"Full Positive Prompt: {prompt}")
+        logger.info(f"Full Negative Prompt: {negative_prompt}")
+        logger.info(f"Dimensions: {width}x{height}")
         
-        # Load workflow template
+        # Unload Ollama models to free VRAM for image generation
+        await self._unload_ollama()
+        
+        # Load workflow template (API format)
         with open(self.workflow_path, 'r') as f:
             workflow = json.load(f)
         
         # Modify workflow with prompt and settings
-        # (This will vary based on your specific workflow)
-        # For now, simplified version
         workflow = self._inject_prompt(workflow, prompt, negative_prompt, width, height)
+        
+        # Save complete workflow to file for debugging (optional)
+        debug_mode = os.getenv("COMFYUI_DEBUG", "false").lower() == "true"
+        if debug_mode:
+            debug_path = "outputs/logs/comfyui_last_workflow.json"
+            with open(debug_path, 'w') as f:
+                json.dump(workflow, f, indent=2)
+            logger.info(f"Debug: Saved complete workflow to {debug_path}")
         
         # Generate unique client ID
         client_id = str(uuid.uuid4())
@@ -70,6 +82,30 @@ class ComfyUIProvider(ImageProvider):
             # Wait for completion and get image
             return await self._wait_for_image(client, prompt_id)
     
+    def _convert_workflow_format(self, workflow_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert ComfyUI UI format to API format"""
+        # If it has a 'nodes' key, it's the UI format - need to convert
+        if "nodes" in workflow_data:
+            api_workflow = {}
+            for node in workflow_data["nodes"]:
+                node_id = str(node["id"])
+                api_workflow[node_id] = {
+                    "inputs": node.get("inputs", {}),
+                    "class_type": node["type"],
+                    "_meta": {
+                        "title": node.get("title", "")
+                    }
+                }
+                # Convert widgets_values to inputs
+                if "widgets_values" in node:
+                    api_workflow[node_id]["widgets_values"] = node["widgets_values"]
+            
+            logger.debug(f"Converted UI workflow with {len(api_workflow)} nodes")
+            return api_workflow
+        
+        # Already in API format
+        return workflow_data
+    
     def _inject_prompt(
         self,
         workflow: Dict[str, Any],
@@ -78,18 +114,39 @@ class ComfyUIProvider(ImageProvider):
         width: int,
         height: int
     ) -> Dict[str, Any]:
-        """Inject prompt and settings into workflow"""
-        # This is a placeholder - actual implementation depends on your workflow
-        # You'll need to find the right node IDs in your workflow JSON
+        """Inject prompt and settings into SDXL API workflow"""
         
-        # Example: Find the text prompt nodes
-        for node_id, node in workflow.items():
-            if node.get("class_type") == "CLIPTextEncode":
-                if "positive" in node.get("_meta", {}).get("title", "").lower():
-                    node["inputs"]["text"] = prompt
-                elif "negative" in node.get("_meta", {}).get("title", "").lower():
-                    if negative_prompt:
-                        node["inputs"]["text"] = negative_prompt
+        # For sdxl_Character_profile_api.json workflow:
+        # Node 6 = BASE Positive Prompt (CLIPTextEncode)
+        # Node 7 = BASE Negative Prompt (CLIPTextEncode)
+        # Node 15 = REFINER Positive Prompt (CLIPTextEncode)
+        # Node 16 = REFINER Negative Prompt (CLIPTextEncode)
+        # Node 5 = EmptyLatentImage (for dimensions)
+        
+        # Set positive prompts (both BASE and REFINER)
+        if "6" in workflow:
+            workflow["6"]["inputs"]["text"] = prompt
+            logger.debug(f"✓ Injected BASE positive prompt (Node 6)")
+        
+        if "15" in workflow:
+            workflow["15"]["inputs"]["text"] = prompt
+            logger.debug(f"✓ Injected REFINER positive prompt (Node 15)")
+        
+        # Set negative prompts (both BASE and REFINER)
+        if negative_prompt:
+            if "7" in workflow:
+                workflow["7"]["inputs"]["text"] = negative_prompt
+                logger.debug(f"✓ Injected BASE negative prompt (Node 7)")
+            
+            if "16" in workflow:
+                workflow["16"]["inputs"]["text"] = negative_prompt
+                logger.debug(f"✓ Injected REFINER negative prompt (Node 16)")
+        
+        # Set image dimensions
+        if "5" in workflow:
+            workflow["5"]["inputs"]["width"] = width
+            workflow["5"]["inputs"]["height"] = height
+            logger.debug(f"Set dimensions: {width}x{height}")
         
         return workflow
     
@@ -142,6 +199,20 @@ class ComfyUIProvider(ImageProvider):
                 return response.status_code == 200
         except Exception:
             return False
+    
+    async def _unload_ollama(self):
+        """Unload Ollama models to free VRAM"""
+        try:
+            logger.info("Unloading Ollama models to free VRAM...")
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # Ollama API to unload all models
+                response = await client.post(
+                    "http://localhost:11434/api/generate",
+                    json={"model": "", "keep_alive": 0}
+                )
+                logger.info("Ollama models unloaded")
+        except Exception as e:
+            logger.warning(f"Could not unload Ollama: {e}")
     
     def get_name(self) -> str:
         return "ComfyUI (Local)"

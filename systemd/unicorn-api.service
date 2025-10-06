@@ -1,0 +1,18 @@
+[Unit]
+Description=Unicorn AI - Main API Backend
+After=network.target unicorn-tts.service unicorn-comfyui.service
+Wants=unicorn-tts.service unicorn-comfyui.service
+
+[Service]
+Type=simple
+User=chris
+WorkingDirectory=/home/chris/Documents/Git/Unicorn_Ai
+Environment="PATH=/home/chris/Documents/Git/Unicorn_Ai/venv/bin:/usr/bin"
+ExecStart=/home/chris/Documents/Git/Unicorn_Ai/venv/bin/python main.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/chris/Documents/Git/Unicorn_Ai/outputs/logs/api.log
+StandardError=append:/home/chris/Documents/Git/Unicorn_Ai/outputs/logs/api.log
+
+[Install]
+WantedBy=multi-user.target

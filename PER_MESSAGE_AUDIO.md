@@ -289,18 +289,25 @@ Possible improvements:
 
 ## Status
 
-✅ **Complete and Working**
+**Implemented - Needs More Testing**
 
-All per-message audio controls implemented:
-- ✅ Play/Pause per message
-- ✅ Seekable progress bar
-- ✅ Volume control
-- ✅ Time display
-- ✅ Download button
-- ✅ Auto-pause other audio
-- ✅ Loading states
-- ✅ Error handling
-- ✅ Mobile responsive
+Per-message audio controls:
+- Play/Pause per message
+- Seekable progress bar
+- Volume control
+- Time display
+- Download button
+- Auto-pause other audio
+- Loading states
+- Error handling
+- Mobile responsive (probably buggy)
+
+**Known Issues / TODO:**
+- Voice quality isn't great yet
+- Need to test with many messages
+- Volume doesn't persist across reload
+- Could use keyboard shortcuts
+- Error messages are generic
 
 ---
 
@@ -325,5 +332,5 @@ To improve voice quality and variety, next steps:
 ---
 
 **Date:** October 5, 2025  
-**Status:** Production Ready ✅  
+**Status:** Working but needs more testing  
 **Location:** Each AI message in chat

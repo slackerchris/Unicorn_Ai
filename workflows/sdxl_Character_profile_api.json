@@ -1,0 +1,178 @@
+{
+  "4": {
+    "inputs": {
+      "ckpt_name": "sd_xl_base_1.0.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint - BASE"
+    }
+  },
+  "5": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "6": {
+    "inputs": {
+      "text": "masterpiece, best quality, ultra-detailed, photorealistic, 8k uhd, professional photography, RAW photo, dslr, 85mm lens, f/1.8,\n(Luna Lovegood:1.2), (age 11-14:1.1), (young girl:1.1), (dreamy and innocent expression:1.1), slightly wide-eyed, curious gaze,\nlong straight dirty blonde hair, slightly messy, parted on the side,\nwearing comfortable, mismatched home clothes, an oversized, patched sweater, soft trousers, bare feet,\nsubtle radish earrings, a butterbeer cork necklace,\n(sitting on a worn armchair in a cozy, eccentrically decorated living room:1.1) in the Lovegood home,\nsunlight streaming through a window, cluttered with whimsical, homemade artifacts, stacks of books and scrolls,\nsoft natural light, warm and inviting atmosphere, deep depth of field,\na faint, whimsical glow around her,\n(holding a Quibbler magazine:1.0) or an unusual magical artifact",
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": "ugly, deformed, blurry, low quality, text, watermark, distorted, malformed, disfigured, bad anatomy, wrong anatomy, extra limbs, missing limbs, floating limbs, disconnected limbs, mutation, mutated, gross proportions, bad proportions, poorly drawn, cartoon, anime, sketches, worst quality, low resolution, noise, grainy, signature, username, artist name",
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative - BASE)"
+    }
+  },
+  "10": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": 660713622565980,
+      "steps": 25,
+      "cfg": 8,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "start_at_step": 0,
+      "end_at_step": 20,
+      "return_with_leftover_noise": "enable",
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "KSampler (Advanced) - BASE"
+    }
+  },
+  "11": {
+    "inputs": {
+      "add_noise": "disable",
+      "noise_seed": 0,
+      "steps": 25,
+      "cfg": 8,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "start_at_step": 20,
+      "end_at_step": 10000,
+      "return_with_leftover_noise": "disable",
+      "model": [
+        "12",
+        0
+      ],
+      "positive": [
+        "15",
+        0
+      ],
+      "negative": [
+        "16",
+        0
+      ],
+      "latent_image": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "KSampler (Advanced) - REFINER"
+    }
+  },
+  "12": {
+    "inputs": {
+      "ckpt_name": "sd_xl_refiner_1.0.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint - REFINER"
+    }
+  },
+  "15": {
+    "inputs": {
+      "text": "masterpiece, best quality, ultra-detailed, photorealistic, 8k uhd, professional photography, RAW photo, dslr, 85mm lens, f/1.8,\n(Luna Lovegood:1.2), (age 11-14:1.1), (young girl:1.1), (dreamy and innocent expression:1.1), slightly wide-eyed, curious gaze,\nlong straight dirty blonde hair, slightly messy, parted on the side,\nwearing comfortable, mismatched home clothes, an oversized, patched sweater, soft trousers, bare feet,\nsubtle radish earrings, a butterbeer cork necklace,\n(sitting on a worn armchair in a cozy, eccentrically decorated living room:1.1) in the Lovegood home,\nsunlight streaming through a window, cluttered with whimsical, homemade artifacts, stacks of books and scrolls,\nsoft natural light, warm and inviting atmosphere, deep depth of field,\na faint, whimsical glow around her,\n(holding a Quibbler magazine:1.0) or an unusual magical artifact",
+      "clip": [
+        "12",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "16": {
+    "inputs": {
+      "text": "ugly, deformed, blurry, low quality, text, watermark, distorted, malformed, disfigured, bad anatomy, wrong anatomy, extra limbs, missing limbs, floating limbs, disconnected limbs, mutation, mutated, gross proportions, bad proportions, poorly drawn, cartoon, anime, sketches, worst quality, low resolution, noise, grainy, signature, username, artist name",
+      "clip": [
+        "12",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative - REFINER)"
+    }
+  },
+  "17": {
+    "inputs": {
+      "samples": [
+        "11",
+        0
+      ],
+      "vae": [
+        "12",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "19": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "17",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  }
+}

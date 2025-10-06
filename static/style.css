@@ -184,6 +184,87 @@ body {
     color: var(--text-secondary);
 }
 
+/* Sessions Section */
+.sessions-section {
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.sessions-section h3 {
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    letter-spacing: 0.05em;
+}
+
+.sessions-list {
+    max-height: 200px;
+    overflow-y: auto;
+    margin-bottom: 0.75rem;
+}
+
+.session-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: var(--bg-light);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.session-item:hover {
+    background: var(--bg-lighter);
+    border-color: var(--primary-color);
+}
+
+.session-item.active {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.session-item .session-info {
+    flex: 1;
+}
+
+.session-item .session-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.session-item .session-meta {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.session-item.active .session-meta {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.session-item .session-delete {
+    background: rgba(239, 68, 68, 0.1);
+    border: none;
+    color: var(--error-color);
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.session-item .session-delete:hover {
+    background: var(--error-color);
+    color: white;
+}
+
 /* Actions Section */
 .actions-section {
     padding: 1.5rem;
@@ -266,13 +347,43 @@ body {
     font-size: 0.875rem;
 }
 
-.status-indicator.online i {
+.status-section h3 {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    font-size: 0.875rem;
+}
+
+.status-dot {
+    font-size: 0.5rem;
+    color: var(--text-secondary);
+}
+
+.status-label {
+    color: var(--text-secondary);
+}
+
+.status-indicator.online .status-dot {
     color: var(--success-color);
     animation: pulse 2s infinite;
 }
 
-.status-indicator.offline i {
+.status-indicator.offline .status-dot {
     color: var(--error-color);
+}
+
+.status-indicator.checking .status-dot {
+    color: var(--warning-color);
+    animation: pulse 1s infinite;
 }
 
 @keyframes pulse {
@@ -1027,4 +1138,26 @@ textarea.text-input {
     padding: 1rem;
     border-radius: 8px;
     margin-bottom: 1rem;
+}
+
+/* ===== Model Manager ===== */
+.btn-small {
+    padding: 6px 12px;
+    font-size: 0.875rem;
+}
+
+.btn-danger {
+    background: var(--error-color);
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+}
+
+.model-item {
+    transition: transform 0.2s;
+}
+
+.model-item:hover {
+    transform: translateX(2px);
 }

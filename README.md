@@ -1,4 +1,25 @@
-# Unicorn AI - Self-Hosted AI Companion
+# Unicorn ## Current Status: Phase 6 Complete + New Features! 🚀
+
+### Features Implemented
+- ✅ Ollama with multiple models (dolphin-mistral, llama3, etc.)
+- ✅ FastAPI backend with REST API
+- ✅ **Telegram bot interface - Chat from your phone!**
+- ✅ **Web UI - Beautiful browser interface!** 🌐
+- ✅ **Memory System** - Hybrid ChromaDB + JSON with semantic search 🧠
+- ✅ **User Profile System** - AI knows how to address you properly 👤
+- ✅ Natural conversations with personality
+- ✅ **ComfyUI Image Generation** - SDXL dual-stage (1024x1024 photorealistic) 🎨
+- ✅ **Enhanced Image Quality** - 40+ negative prompt terms, advanced workflow
+- ✅ **Prompt Weighting** - Control attention in image generation (e.g., `(eyes:1.5)`)
+- ✅ **Voice messages** - Coqui TTS (local, high-quality) 🎤
+- ✅ **Per-message audio controls** - Play, pause, seek, volume, download 🔊
+- ✅ **Multiple Personas** - Switch between Luna, Nova, Sage, and Alex! 🎭
+- ✅ **Custom Personas** - Create your own personas with unique personalities! ✨
+- ✅ **Persona Editing** - Modify personas with per-persona LLM selection
+- ✅ **Visual Appearance Field** - Describe persona appearance for image generation
+- ✅ **Model Manager** - Download/delete Ollama models via Web UI
+- ✅ **Service Status** - Real-time health monitoring of all services
+- ✅ Real-time responsesAI Companion
 
 A fully self-hosted, uncensored AI companion that can:
 - Have natural text conversations
@@ -182,15 +203,64 @@ Hybrid memory with ChromaDB vector storage + JSON recent messages.
 
 See [MEMORY_SYSTEM.md](MEMORY_SYSTEM.md) for details.
 
-## Documentation 📚
+## Image Generation 🎨
 
+**NEW:** High-quality image generation with SDXL!
+
+### Features:
+- 🎨 **SDXL Dual-Stage** - BASE + REFINER for photorealistic quality
+- 📐 **1024x1024** - High resolution output
+- 🚫 **Enhanced Negative Prompts** - 40+ quality control terms
+- ⚖️ **Prompt Weighting** - Control attention (e.g., `(face:1.5), (background:0.8)`)
+- 🎭 **Per-Persona Appearance** - Visual description field for consistent character looks
+- � **Debug Logging** - See full prompts sent to ComfyUI
+- 📊 **Real-time Monitoring** - `./monitor_image_gen.sh` script
+
+### Prompt Weighting:
+Use parentheses with numbers to control emphasis:
+- `(keyword:1.5)` - 50% more attention
+- `(keyword:0.5)` - 50% less attention
+- Multiple weights: `(beautiful eyes:1.5), (perfect skin:1.2), (busy background:0.8)`
+
+See [PROMPT_WEIGHTING_GUIDE.md](PROMPT_WEIGHTING_GUIDE.md) for complete guide.
+
+### Quality Improvements:
+Our enhanced negative prompts prevent:
+- Anatomy errors (extra fingers, limbs, etc.)
+- Visual artifacts (blur, grain, noise)
+- Unwanted text/watermarks
+- Low-quality styles (amateur, low-res, etc.)
+
+See [IMAGE_GENERATION_UPDATE_SUMMARY.md](IMAGE_GENERATION_UPDATE_SUMMARY.md) for details.
+
+## Documentation �📚
+
+### Setup & Getting Started
 - [QUICKSTART.md](QUICKSTART.md) - Quick setup guide
+- [docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md) - Detailed setup instructions
 - [TELEGRAM_SETUP.md](TELEGRAM_SETUP.md) - Telegram bot setup
+
+### Features & Guides
 - [MEMORY_SYSTEM.md](MEMORY_SYSTEM.md) - Memory system details
 - [TTS_UPGRADE.md](TTS_UPGRADE.md) - Voice TTS system (Coqui)
 - [PER_MESSAGE_AUDIO.md](PER_MESSAGE_AUDIO.md) - Audio controls
 - [AUDIO_CONTROLS.md](AUDIO_CONTROLS.md) - Audio UI features
-- [CUSTOM_PERSONAS.md](docs/CUSTOM_PERSONAS.md) - Persona creation guide
+- [docs/CUSTOM_PERSONAS.md](docs/CUSTOM_PERSONAS.md) - Persona creation guide
+
+### Image Generation (NEW!)
+- [PROMPT_WEIGHTING_GUIDE.md](PROMPT_WEIGHTING_GUIDE.md) - **Complete prompt weighting guide**
+- [PROMPT_WEIGHTING_QUICK_REF.md](PROMPT_WEIGHTING_QUICK_REF.md) - Quick reference
+- [IMAGE_GENERATION_UPDATE_SUMMARY.md](IMAGE_GENERATION_UPDATE_SUMMARY.md) - All improvements
+- [NEGATIVE_PROMPT_ENHANCEMENT.md](NEGATIVE_PROMPT_ENHANCEMENT.md) - Quality improvements
+- [SDXL_WORKFLOW_UPDATE.md](SDXL_WORKFLOW_UPDATE.md) - SDXL architecture
+- [IMAGE_STYLE_FIELD_FEATURE.md](IMAGE_STYLE_FIELD_FEATURE.md) - Visual appearance field
+- [COMFYUI_PROMPT_VIEWING_GUIDE.md](COMFYUI_PROMPT_VIEWING_GUIDE.md) - Debug logging
+- [AI_IMAGE_CONFUSION_FIX.md](AI_IMAGE_CONFUSION_FIX.md) - Behavior improvements
+
+### Development & Troubleshooting
+- [docs/AMD_GPU_WORKING_FIX.md](docs/AMD_GPU_WORKING_FIX.md) - AMD GPU setup
+- [docs/IMAGE_GEN_AMD_FIX.md](docs/IMAGE_GEN_AMD_FIX.md) - AMD image generation
+- [CHANGELOG.md](CHANGELOG.md) - Version history
 - [PERSONA_MANAGEMENT.md](docs/PERSONA_MANAGEMENT.md) - Persona editing
 
 ## Development Notes
