@@ -98,15 +98,16 @@ stop_service() {
     case $1 in
         api)
             echo "🛑 Stopping API server..."
-            # Kill only the main API, not ComfyUI
-            ps aux | grep "python main.py" | grep -v comfyui | grep -v grep | awk '{print $2}' | xargs -r kill
+            # Kill only the main API (port 8000), not ComfyUI (port 8188)
+            # Find the process listening on port 8000
+            lsof -ti:8000 2>/dev/null | xargs -r kill
             sleep 1
             echo "   Status: $(check_service api)"
             ;;
         comfyui)
             echo "🛑 Stopping ComfyUI..."
-            # Kill only ComfyUI (has port 8188 in command)
-            ps aux | grep "python main.py.*8188" | grep -v grep | awk '{print $2}' | xargs -r kill
+            # Kill only ComfyUI (port 8188)
+            lsof -ti:8188 2>/dev/null | xargs -r kill
             sleep 1
             echo "   Status: $(check_service comfyui)"
             ;;
