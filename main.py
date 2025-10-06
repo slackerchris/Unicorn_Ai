@@ -102,6 +102,7 @@ class CreatePersonaRequest(BaseModel):
     max_tokens: Optional[int] = 150
     voice: Optional[str] = "en-US-AriaNeural"
     model: Optional[str] = "dolphin-mistral:latest"
+    image_style: Optional[str] = ""
 
 
 class ChatResponse(BaseModel):
@@ -645,7 +646,8 @@ async def create_persona_endpoint(request: CreatePersonaRequest):
             temperature=request.temperature,
             max_tokens=request.max_tokens,
             voice=request.voice,
-            model=request.model
+            model=request.model,
+            image_style=request.image_style
         )
         
         logger.info(f"Created new persona: {persona.name} ({persona.id})")
@@ -662,7 +664,8 @@ async def create_persona_endpoint(request: CreatePersonaRequest):
                 "voice": persona.voice,
                 "model": persona.model,
                 "temperature": persona.temperature,
-                "max_tokens": persona.max_tokens
+                "max_tokens": persona.max_tokens,
+                "image_style": persona.image_style
             }
         }
     except ValueError as e:
@@ -697,6 +700,8 @@ async def update_persona_endpoint(persona_id: str, request: CreatePersonaRequest
         persona.voice = request.voice
         if request.model:
             persona.model = request.model
+        if request.image_style is not None:
+            persona.image_style = request.image_style
         
         # Save updated persona
         persona_manager.save_persona(persona)
@@ -715,7 +720,8 @@ async def update_persona_endpoint(persona_id: str, request: CreatePersonaRequest
                 "voice": persona.voice,
                 "model": persona.model,
                 "temperature": persona.temperature,
-                "max_tokens": persona.max_tokens
+                "max_tokens": persona.max_tokens,
+                "image_style": persona.image_style
             }
         }
     except Exception as e:
