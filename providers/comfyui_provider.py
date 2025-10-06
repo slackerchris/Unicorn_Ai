@@ -43,6 +43,14 @@ class ComfyUIProvider(ImageProvider):
         logger.info(f"Full Negative Prompt: {negative_prompt}")
         logger.info(f"Dimensions: {width}x{height}")
         
+        # Check if ComfyUI is available
+        if not await self.is_available():
+            error_msg = "ComfyUI is not running or not accessible. Please start ComfyUI first."
+            logger.error(error_msg)
+            raise Exception(error_msg)
+        
+        logger.info("✓ ComfyUI health check passed")
+        
         # Unload Ollama models to free VRAM for image generation
         await self._unload_ollama()
         

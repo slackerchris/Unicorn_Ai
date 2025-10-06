@@ -103,6 +103,7 @@ class CreatePersonaRequest(BaseModel):
     voice: Optional[str] = "en-US-AriaNeural"
     model: Optional[str] = "dolphin-mistral:latest"
     image_style: Optional[str] = ""
+    gender: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -314,7 +315,7 @@ async def generate_image(prompt: str, width: int = 512, height: int = 512, perso
     # Get persona for character-consistent generation
     persona = get_persona_for_request(persona_id)
     
-    negative_prompt = "ugly, deformed, blurry, low quality, distorted, malformed, disfigured, bad anatomy, wrong anatomy, extra limbs, missing limbs, floating limbs, disconnected limbs, mutation, mutated, gross proportions, bad proportions, poorly drawn, cartoon, anime, sketches, worst quality, low resolution, noise, grainy"
+    negative_prompt = "(worst quality:1.5), (low quality:1.5), (normal quality:1.5), lowres, bad anatomy, bad hands, multiple eyebrow, (cropped), extra limb, missing limbs, deformed hands, long neck, long body, (bad hands), signature, username, artist name, conjoined fingers, deformed fingers, ugly eyes, imperfect eyes, skewed eyes, unnatural face, unnatural body, error, painting by bad-artist, ugly, deformed, noisy, blurry, distorted, grainy, text, watermark"
     
     try:
         # Build character-consistent prompt using persona details
@@ -472,7 +473,7 @@ async def chat(request: ChatRequest):
                     if persona.image_style:
                         character_prompt += f", {persona.image_style}"
                     
-                    negative_prompt = "ugly, deformed, blurry, low quality, text, watermark, distorted, malformed, disfigured, bad anatomy, wrong anatomy, extra limbs, missing limbs, floating limbs, disconnected limbs, mutation, mutated, gross proportions, bad proportions, poorly drawn, cartoon, anime, sketches, worst quality, low resolution, noise, grainy, signature, username, artist name"
+                    negative_prompt = "(worst quality:1.5), (low quality:1.5), (normal quality:1.5), lowres, bad anatomy, bad hands, multiple eyebrow, (cropped), extra limb, missing limbs, deformed hands, long neck, long body, (bad hands), signature, username, artist name, conjoined fingers, deformed fingers, ugly eyes, imperfect eyes, skewed eyes, unnatural face, unnatural body, error, painting by bad-artist, ugly, deformed, noisy, blurry, distorted, grainy, text, watermark"
                     
                     # Store debug info
                     import time
@@ -565,6 +566,10 @@ async def list_personas():
             "speaking_style": persona.speaking_style,
             "model": persona.model,
             "voice": persona.voice,
+            "image_style": persona.image_style,
+            "temperature": persona.temperature,
+            "max_tokens": persona.max_tokens,
+            "gender": persona.gender,
             "is_current": (persona.id == current_persona.id)
         })
     
@@ -578,6 +583,10 @@ async def list_personas():
             "speaking_style": current_persona.speaking_style,
             "model": current_persona.model,
             "voice": current_persona.voice,
+            "image_style": current_persona.image_style,
+            "temperature": current_persona.temperature,
+            "max_tokens": current_persona.max_tokens,
+            "gender": current_persona.gender,
             "is_current": True
         }
     }
@@ -608,6 +617,7 @@ async def get_persona(persona_id: str):
         "image_style": persona.image_style,
         "reference_image": persona.reference_image,
         "example_messages": persona.example_messages,
+        "gender": persona.gender,
         "is_current": (persona.id == persona_manager.current_persona_id)
     }
 
@@ -688,7 +698,8 @@ async def create_persona_endpoint(request: CreatePersonaRequest):
             max_tokens=request.max_tokens,
             voice=request.voice,
             model=request.model,
-            image_style=request.image_style
+            image_style=request.image_style,
+            gender=request.gender
         )
         
         logger.info(f"Created new persona: {persona.name} ({persona.id})")
@@ -743,6 +754,8 @@ async def update_persona_endpoint(persona_id: str, request: CreatePersonaRequest
             persona.model = request.model
         if request.image_style is not None:
             persona.image_style = request.image_style
+        if request.gender is not None:
+            persona.gender = request.gender
         
         # Save updated persona
         persona_manager.save_persona(persona)
@@ -762,7 +775,8 @@ async def update_persona_endpoint(persona_id: str, request: CreatePersonaRequest
                 "model": persona.model,
                 "temperature": persona.temperature,
                 "max_tokens": persona.max_tokens,
-                "image_style": persona.image_style
+                "image_style": persona.image_style,
+                "gender": persona.gender
             }
         }
     except Exception as e:

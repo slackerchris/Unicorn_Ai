@@ -1293,6 +1293,7 @@ class UnicornAI {
         document.getElementById('personaSpeakingStyle').value = this.currentPersona.speaking_style;
         document.getElementById('personaModel').value = this.currentPersona.model || 'dolphin-mistral:latest';
         document.getElementById('personaVoice').value = this.currentPersona.voice;
+        document.getElementById('personaGender').value = this.currentPersona.gender || '';
         document.getElementById('personaImageStyle').value = this.currentPersona.image_style || '';
         document.getElementById('personaTemperature').value = this.currentPersona.temperature;
         document.getElementById('personaTemperatureValue').textContent = this.currentPersona.temperature;
@@ -1349,6 +1350,7 @@ class UnicornAI {
         const speakingStyle = speakingStyleEl.value.trim();
         const model = modelEl.value;
         const voice = voiceEl.value;
+        const gender = document.getElementById('personaGender').value;
         const imageStyle = imageStyleEl.value.trim();
         const temperature = parseFloat(temperatureEl.value);
         const maxTokens = parseInt(maxTokensEl.value);
@@ -1387,6 +1389,7 @@ class UnicornAI {
                     speaking_style: speakingStyle,
                     model: model,
                     voice: voice,
+                    gender: gender || null,
                     image_style: imageStyle,
                     temperature: temperature,
                     max_tokens: maxTokens

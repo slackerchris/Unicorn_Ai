@@ -27,6 +27,7 @@ class Persona:
     voice: str = "en-US-AriaNeural"
     image_style: Optional[str] = None
     reference_image: Optional[str] = None
+    gender: Optional[str] = None  # e.g., "female", "male", "non-binary", "other"
     
     def __post_init__(self):
         if self.example_messages is None:
