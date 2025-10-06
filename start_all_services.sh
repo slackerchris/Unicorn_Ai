@@ -33,10 +33,10 @@ sleep 3
 # Start ComfyUI (if installed)
 if [ "$SKIP_COMFYUI" != "true" ]; then
     echo ""
-    echo "2️⃣  Starting ComfyUI..."
+    echo "2️⃣  Starting ComfyUI (with CORS)..."
     cd comfyui
     source venv/bin/activate
-    python main.py --listen 0.0.0.0 --port 8188 > ../outputs/logs/comfyui.log 2>&1 &
+    python main.py --listen 0.0.0.0 --port 8188 --enable-cors-header "*" > ../outputs/logs/comfyui.log 2>&1 &
     COMFYUI_PID=$!
     deactivate
     cd ..

@@ -122,8 +122,8 @@ if [ -d "comfyui" ] && [ -f "comfyui/main.py" ]; then
             export LD_LIBRARY_PATH=$ROCM_PATH/lib:$LD_LIBRARY_PATH
         fi
         
-        echo -e "${CYAN}   Starting on port 8188 with GPU${NC}"
-        nohup python main.py --normalvram --listen 0.0.0.0 --port 8188 > ../outputs/logs/comfyui.log 2>&1 &
+        echo -e "${CYAN}   Starting on port 8188 with GPU and CORS enabled${NC}"
+        nohup python main.py --normalvram --listen 0.0.0.0 --port 8188 --enable-cors-header "*" > ../outputs/logs/comfyui.log 2>&1 &
         
         COMFYUI_PID=$!
         echo -e "${GREEN}✅ ComfyUI started (PID: $COMFYUI_PID)${NC}"

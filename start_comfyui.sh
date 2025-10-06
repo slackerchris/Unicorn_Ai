@@ -12,6 +12,6 @@ fi
 echo "🚀 Starting ComfyUI..."
 cd "$COMFYUI_DIR"
 
-# Activate venv and start with low VRAM mode
+# Activate venv and start with low VRAM mode and CORS enabled
 source venv/bin/activate
-python main.py --listen 0.0.0.0 --port 8188 --lowvram
+python main.py --listen 0.0.0.0 --port 8188 --lowvram --enable-cors-header "*"
