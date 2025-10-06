@@ -318,10 +318,13 @@ async def generate_image(prompt: str, width: int = 512, height: int = 512, perso
     negative_prompt = "(worst quality:1.5), (low quality:1.5), (normal quality:1.5), lowres, bad anatomy, bad hands, multiple eyebrow, (cropped), extra limb, missing limbs, deformed hands, long neck, long body, (bad hands), signature, username, artist name, conjoined fingers, deformed fingers, ugly eyes, imperfect eyes, skewed eyes, unnatural face, unnatural body, error, painting by bad-artist, ugly, deformed, noisy, blurry, distorted, grainy, text, watermark"
     
     try:
-        # Build character-consistent prompt using persona details
-        character_prompt = f"{persona.name}, {persona.description}, {prompt}"
+        # Build character-consistent prompt using persona's visual style
         if persona.image_style:
-            character_prompt += f", {persona.image_style}"
+            # Use image_style (which has visual details) + user prompt
+            character_prompt = f"{prompt}, {persona.image_style}"
+        else:
+            # Fallback: use persona name if no image_style defined
+            character_prompt = f"{persona.name}, {prompt}"
         
         # Store debug info
         import time
@@ -468,10 +471,13 @@ async def chat(request: ChatRequest):
                 logger.info("Image generation started - Ollama models will be unloaded")
                 
                 try:
-                    # Build character-consistent prompt using persona details
-                    character_prompt = f"{persona.name}, {persona.description}, {image_prompt}"
+                    # Build character-consistent prompt using persona's visual style
                     if persona.image_style:
-                        character_prompt += f", {persona.image_style}"
+                        # Use image_style (which has visual details) + user prompt
+                        character_prompt = f"{image_prompt}, {persona.image_style}"
+                    else:
+                        # Fallback: use persona name if no image_style defined
+                        character_prompt = f"{persona.name}, {image_prompt}"
                     
                     negative_prompt = "(worst quality:1.5), (low quality:1.5), (normal quality:1.5), lowres, bad anatomy, bad hands, multiple eyebrow, (cropped), extra limb, missing limbs, deformed hands, long neck, long body, (bad hands), signature, username, artist name, conjoined fingers, deformed fingers, ugly eyes, imperfect eyes, skewed eyes, unnatural face, unnatural body, error, painting by bad-artist, ugly, deformed, noisy, blurry, distorted, grainy, text, watermark"
                     
