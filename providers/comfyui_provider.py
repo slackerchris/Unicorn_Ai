@@ -34,6 +34,7 @@ class ComfyUIProvider(ImageProvider):
         negative_prompt: Optional[str] = None,
         width: int = 512,
         height: int = 512,
+        workflow_path: Optional[str] = None,
         **kwargs
     ) -> bytes:
         """Generate image using ComfyUI API"""
@@ -55,11 +56,16 @@ class ComfyUIProvider(ImageProvider):
         await self._unload_ollama()
         
         # Load workflow template (API format)
-        with open(self.workflow_path, 'r') as f:
+        # Use provided workflow path or default
+        current_workflow_path = workflow_path or self.workflow_path
+        with open(current_workflow_path, 'r') as f:
             workflow = json.load(f)
         
+        logger.info(f"Using workflow: {current_workflow_path}")
+        
         # Modify workflow with prompt and settings
-        workflow = self._inject_prompt(workflow, prompt, negative_prompt, width, height)
+        persona_name = kwargs.get("persona_name", "unknown")
+        workflow = self._inject_prompt(workflow, prompt, negative_prompt, width, height, persona_name)
         
         # Save complete workflow to file for debugging (optional)
         debug_mode = os.getenv("COMFYUI_DEBUG", "false").lower() == "true"
@@ -120,41 +126,59 @@ class ComfyUIProvider(ImageProvider):
         prompt: str,
         negative_prompt: Optional[str],
         width: int,
-        height: int
+        height: int,
+        persona_name: str = "unknown"
     ) -> Dict[str, Any]:
-        """Inject prompt and settings into SDXL API workflow"""
+        """Inject prompt and settings into workflow - works with both standard and InstantID workflows"""
         
-        # For sdxl_Character_profile_api.json workflow:
-        # Node 6 = BASE Positive Prompt (CLIPTextEncode)
-        # Node 7 = BASE Negative Prompt (CLIPTextEncode)
-        # Node 15 = REFINER Positive Prompt (CLIPTextEncode)
-        # Node 16 = REFINER Negative Prompt (CLIPTextEncode)
-        # Node 5 = EmptyLatentImage (for dimensions)
+        # Replace persona name placeholders throughout the workflow
+        workflow_str = json.dumps(workflow)
+        workflow_str = workflow_str.replace("PERSONA_NAME", persona_name)
+        workflow = json.loads(workflow_str)
         
-        # Set positive prompts (both BASE and REFINER)
-        if "6" in workflow:
-            workflow["6"]["inputs"]["text"] = prompt
-            logger.debug(f"✓ Injected BASE positive prompt (Node 6)")
+        # Find and inject positive prompts
+        positive_nodes = []
+        negative_nodes = []
+        dimension_nodes = []
         
-        if "15" in workflow:
-            workflow["15"]["inputs"]["text"] = prompt
-            logger.debug(f"✓ Injected REFINER positive prompt (Node 15)")
-        
-        # Set negative prompts (both BASE and REFINER)
-        if negative_prompt:
-            if "7" in workflow:
-                workflow["7"]["inputs"]["text"] = negative_prompt
-                logger.debug(f"✓ Injected BASE negative prompt (Node 7)")
+        for node_id, node_data in workflow.items():
+            class_type = node_data.get("class_type", "")
+            meta_title = node_data.get("_meta", {}).get("title", "").lower()
             
-            if "16" in workflow:
-                workflow["16"]["inputs"]["text"] = negative_prompt
-                logger.debug(f"✓ Injected REFINER negative prompt (Node 16)")
+            # Find positive prompt nodes
+            if class_type == "CLIPTextEncode":
+                if "positive" in meta_title or (
+                    "inputs" in node_data and 
+                    node_data["inputs"].get("text") in ["PROMPT_TEXT", ""] or
+                    "positive" in str(node_data["inputs"].get("text", "")).lower()
+                ):
+                    positive_nodes.append(node_id)
+                elif "negative" in meta_title or (
+                    "inputs" in node_data and
+                    "negative" in str(node_data["inputs"].get("text", "")).lower()
+                ):
+                    negative_nodes.append(node_id)
+            
+            # Find dimension nodes
+            elif class_type == "EmptyLatentImage":
+                dimension_nodes.append(node_id)
         
-        # Set image dimensions
-        if "5" in workflow:
-            workflow["5"]["inputs"]["width"] = width
-            workflow["5"]["inputs"]["height"] = height
-            logger.debug(f"Set dimensions: {width}x{height}")
+        # Inject positive prompts
+        for node_id in positive_nodes:
+            workflow[node_id]["inputs"]["text"] = prompt
+            logger.debug(f"✓ Injected positive prompt into node {node_id}")
+        
+        # Inject negative prompts
+        if negative_prompt:
+            for node_id in negative_nodes:
+                workflow[node_id]["inputs"]["text"] = negative_prompt
+                logger.debug(f"✓ Injected negative prompt into node {node_id}")
+        
+        # Set dimensions
+        for node_id in dimension_nodes:
+            workflow[node_id]["inputs"]["width"] = width
+            workflow[node_id]["inputs"]["height"] = height
+            logger.debug(f"✓ Set dimensions {width}x{height} in node {node_id}")
         
         return workflow
     

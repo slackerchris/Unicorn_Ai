@@ -1,7 +1,7 @@
 {
   "4": {
     "inputs": {
-      "ckpt_name": "epicrealxlNSFWSFW_v10.safetensors"
+      "ckpt_name": "cyberrealisticPony_v140.safetensors"
     },
     "class_type": "CheckpointLoaderSimple",
     "_meta": {

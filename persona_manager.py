@@ -291,8 +291,8 @@ class PersonaManager:
             if hasattr(persona, key):
                 setattr(persona, key, value)
         
-        # Rebuild system prompt if relevant fields changed
-        if any(k in updates for k in ['name', 'description', 'personality_traits', 'speaking_style']):
+        # Rebuild system prompt if relevant fields changed, but only if no custom system_prompt was provided
+        if any(k in updates for k in ['name', 'description', 'personality_traits', 'speaking_style']) and 'system_prompt' not in updates:
             persona.system_prompt = persona._build_default_prompt()
         
         self.save_persona(persona)

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Unicorn AI - Mobile</title>
+    <link rel="stylesheet" href="/static/shared/common.css">
+    <link rel="stylesheet" href="/static/mobile/mobile.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Mobile Header -->
+    <header class="mobile-header">
+        <div class="mobile-header-content">
+            <button class="mobile-menu-btn" id="mobileMenuBtn">
+                <i class="fas fa-bars"></i>
+            </button>
+            <div class="mobile-title">🦄 Unicorn AI</div>
+            <div></div> <!-- Spacer for center alignment -->
+        </div>
+    </header>
+
+    <!-- Mobile Overlay -->
+    <div class="mobile-overlay" id="mobileOverlay"></div>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h1>🦄 Unicorn AI</h1>
+            </div>
+
+            <!-- Persona Section -->
+            <div class="persona-section">
+                <h3>Active Persona</h3>
+                <div class="persona-selector-wrapper">
+                    <div class="persona-select-row">
+                        <select id="personaSelector" class="persona-select">
+                            <option value="">Loading personas...</option>
+                        </select>
+                        <button id="editPersonaBtn" class="edit-persona-btn" title="Edit current persona" style="display: none;">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button id="deletePersonaBtn" class="delete-persona-btn" title="Delete current persona" style="display: none;">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Sessions Section -->
+            <div class="sessions-section">
+                <h3>Chat Sessions</h3>
+                <div class="sessions-list" id="sessionsList">
+                    <!-- Sessions will be added dynamically -->
+                </div>
+                <button class="action-btn" id="newSessionBtn">
+                    <i class="fas fa-plus"></i> New Session
+                </button>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="actions-section">
+                <h3>Actions</h3>
+                <button class="action-btn" id="createPersonaBtn">
+                    <i class="fas fa-user-plus"></i> Create Persona
+                </button>
+                <button class="action-btn" id="clearChatBtn">
+                    <i class="fas fa-trash"></i> Clear Chat
+                </button>
+                <button class="action-btn" id="voiceModeBtn">
+                    <i class="fas fa-microphone-slash"></i> Voice: Off
+                </button>
+                <button class="action-btn" id="memoryModeBtn">
+                    <i class="fas fa-brain"></i> Memory: On
+                </button>
+                <button class="action-btn" id="settingsBtn">
+                    <i class="fas fa-cog"></i> Settings
+                </button>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-section">
+                <h3>Stats</h3>
+                <div class="stat-item">
+                    <span class="stat-label">Messages:</span>
+                    <span class="stat-value" id="messageCount">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Response:</span>
+                    <span class="stat-value" id="avgResponseTime">0s</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Status:</span>
+                    <div class="system-status" id="systemStatus">
+                        <i class="fas fa-circle"></i>
+                        Checking...
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Chat Container -->
+            <div class="chat-container">
+                <div class="chat-messages" id="chatMessages">
+                    <!-- Messages will be added dynamically -->
+                </div>
+                
+                <div class="typing-indicator" id="typingIndicator">
+                    <i class="fas fa-circle-notch fa-spin"></i> Typing...
+                </div>
+            </div>
+
+            <!-- Chat Input -->
+            <div class="chat-input-container">
+                <form class="chat-input-row" id="chatForm">
+                    <textarea 
+                        id="messageInput" 
+                        class="chat-input" 
+                        placeholder="Type your message..."
+                        rows="1"
+                    ></textarea>
+                    <div class="input-actions">
+                        <button type="submit" class="input-btn" id="sendBtn">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal" id="settingsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Settings</h2>
+                <button class="close-modal" id="closeSettingsBtn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Theme</label>
+                    <select class="form-select" id="themeSelect">
+                        <option value="dark">Dark</option>
+                        <option value="light">Light</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">
+                        <input type="checkbox" id="soundEffectsCheck"> Sound Effects
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">
+                        <input type="checkbox" id="voiceResponsesCheck"> Voice Responses
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">
+                        <input type="checkbox" id="streamingModeCheck"> Streaming Mode
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="saveSettingsBtn">Save</button>
+                <button class="btn" id="resetSettingsBtn">Reset</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Persona Modal -->
+    <div class="modal" id="createPersonaModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Create Persona</h2>
+                <button class="close-modal" id="closeCreatePersonaBtn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="createPersonaForm">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label">ID</label>
+                        <input type="text" class="form-input" id="personaId" name="id" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Name</label>
+                        <input type="text" class="form-input" id="personaName" name="name" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-textarea" id="personaDescription" name="description" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Traits (comma-separated)</label>
+                        <input type="text" class="form-input" id="personaTraits" name="personality_traits" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Speaking Style</label>
+                        <textarea class="form-textarea" id="personaSpeakingStyle" name="speaking_style" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">System Prompt</label>
+                        <textarea class="form-textarea" id="personaSystemPrompt" name="system_prompt" required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">Create</button>
+                    <button type="button" class="btn" id="cancelCreatePersonaBtn">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/shared/app-core.js"></script>
+    <script src="/static/mobile/mobile-ui.js"></script>
+</body>
+</html>

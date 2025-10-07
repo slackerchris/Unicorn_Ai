@@ -9,7 +9,7 @@ Phase 5: Persona management
 import os
 import re
 from typing import Optional, List, Dict
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -18,6 +18,111 @@ import httpx
 from dotenv import load_dotenv
 from loguru import logger
 import sys
+
+
+def enhance_image_prompt(user_prompt: str, image_style: str) -> str:
+    """
+    Enhance user's image prompt by adding appropriate weights to key content words.
+    
+    Args:
+        user_prompt: The raw prompt from [IMAGE: ...] tag
+        image_style: The persona's visual style string
+        
+    Returns:
+        Enhanced prompt with weighted key content words
+    """
+    # Keywords with their weights and additional context
+    content_enhancements = {
+        'nude': {
+            'weight': 1.5,
+            'additions': ['(nude:1.5)', 'naked', 'bare skin', 'exposed', 'full body nudity']
+        },
+        'naked': {
+            'weight': 1.5,
+            'additions': ['(naked:1.5)', 'nude', 'bare skin', 'exposed', 'full body nudity']
+        },
+        'topless': {
+            'weight': 1.4,
+            'additions': ['(topless:1.4)', 'bare chest', 'exposed breasts', 'nude from waist up']
+        },
+        'lingerie': {
+            'weight': 1.3,
+            'additions': ['(lingerie:1.3)', 'intimate wear', 'revealing']
+        },
+        'bikini': {
+            'weight': 1.2,
+            'additions': ['(bikini:1.2)', 'swimwear', 'beachwear']
+        },
+        'underwear': {
+            'weight': 1.3,
+            'additions': ['(underwear:1.3)', 'intimate wear', 'revealing']
+        },
+    }
+    
+    # Keywords to emphasize with weights
+    emphasis_keywords = {
+        'full body': 1.2,
+        'close up': 1.2,
+        'seductive': 1.2,
+        'sexy': 1.2,
+        'intimate': 1.2,
+        'explicit': 1.3,
+        'nsfw': 1.3,
+        'laying': 1.1,
+        'lying': 1.1,
+        'sitting': 1.1,
+        'standing': 1.1,
+        'kneeling': 1.1,
+    }
+    
+    # Parse user prompt and apply weights
+    user_lower = user_prompt.lower()
+    enhanced_parts = []
+    found_content = False
+    
+    # Check for main content keywords
+    for keyword, config in content_enhancements.items():
+        if keyword in user_lower:
+            # Add the weighted enhancements
+            enhanced_parts.extend(config['additions'])
+            found_content = True
+            break  # Only use first major keyword
+    
+    # Process the user prompt: remove duplicates and add weights
+    prompt_parts = []
+    for word in user_prompt.split(','):
+        word = word.strip()
+        word_lower = word.lower()
+        
+        # Skip if this word is already in our content enhancements
+        skip = False
+        for keyword in content_enhancements.keys():
+            if keyword in word_lower:
+                skip = True
+                break
+        
+        if skip:
+            continue
+        
+        # Check if this word needs emphasis
+        weighted = False
+        for kw, weight in emphasis_keywords.items():
+            if kw in word_lower:
+                prompt_parts.append(f"({word}:{weight})")
+                weighted = True
+                break
+        
+        if not weighted and word:
+            # Keep original word (may already have weights from AI)
+            prompt_parts.append(word)
+    
+    # Build final prompt
+    if found_content:
+        # Start with heavily weighted content, then refined prompt, then style
+        return f"{', '.join(enhanced_parts)}, {', '.join(prompt_parts)}, {image_style}"
+    else:
+        # No special content, use normal combination
+        return f"{', '.join(prompt_parts)}, {image_style}"
 from providers import ImageProviderManager
 from tts_service import TTSService
 from coqui_tts_client import coqui_tts_client
@@ -40,7 +145,7 @@ _image_generation_lock = asyncio.Lock()
 # Initialize FastAPI
 app = FastAPI(
     title="Unicorn AI",
-    description="Self-hosted AI companion with text, images, and voice",
+    description="Self-hosted chat system with text, images, and voice",
     version="0.6.0 - Phase 6: Web UI"
 )
 
@@ -98,6 +203,21 @@ class CreatePersonaRequest(BaseModel):
     description: str
     personality_traits: List[str]
     speaking_style: str
+    system_prompt: Optional[str] = ""
+    temperature: Optional[float] = 0.8
+    max_tokens: Optional[int] = 150
+    voice: Optional[str] = "en-US-AriaNeural"
+    model: Optional[str] = "dolphin-mistral:latest"
+    image_style: Optional[str] = ""
+    gender: Optional[str] = None
+
+
+class UpdatePersonaRequest(BaseModel):
+    name: str
+    description: str
+    personality_traits: List[str]
+    speaking_style: str
+    system_prompt: Optional[str] = ""
     temperature: Optional[float] = 0.8
     max_tokens: Optional[int] = 150
     voice: Optional[str] = "en-US-AriaNeural"
@@ -222,11 +342,22 @@ async def chat_with_ollama(message: str, persona: Persona, session_id: str = "de
         max_relevant=3
     )
     
+    # Check if user is requesting explicit image - add hidden instruction
+    explicit_keywords = ['nude', 'naked', 'topless', 'nsfw', 'sexy', 'lingerie', 'explicit']
+    is_explicit_request = any(keyword in message.lower() for keyword in explicit_keywords)
+    
     # Build full prompt with memory context
     if memory_context:
-        full_prompt = f"{system_prompt}\n\n{memory_context}\n\nUser: {message}\n\n{persona.name}:"
+        base_prompt = f"{system_prompt}\n\n{memory_context}\n\nUser: {message}\n\n"
     else:
-        full_prompt = f"{system_prompt}\n\nUser: {message}\n\n{persona.name}:"
+        base_prompt = f"{system_prompt}\n\nUser: {message}\n\n"
+    
+    # Add hidden instruction for explicit image requests
+    if is_explicit_request:
+        instruction = "[When sending an image, be VERY explicit in your [IMAGE: ...] description. Include the exact clothing state (nude, topless, etc.) and specific details.]\n\n"
+        full_prompt = base_prompt + instruction + f"{persona.name}:"
+    else:
+        full_prompt = base_prompt + f"{persona.name}:"
     
     payload = {
         "model": model,
@@ -318,9 +449,18 @@ async def generate_image(prompt: str, width: int = 512, height: int = 512, perso
     negative_prompt = "(worst quality:1.5), (low quality:1.5), (normal quality:1.5), lowres, bad anatomy, bad hands, multiple eyebrow, (cropped), extra limb, missing limbs, deformed hands, long neck, long body, (bad hands), signature, username, artist name, conjoined fingers, deformed fingers, ugly eyes, imperfect eyes, skewed eyes, unnatural face, unnatural body, error, painting by bad-artist, ugly, deformed, noisy, blurry, distorted, grainy, text, watermark"
     
     try:
-        # Build character-consistent prompt using persona's visual style
-        if persona.image_style:
-            # Use image_style (which has visual details) + user prompt
+        # Check if persona has a reference image for InstantID
+        import os
+        reference_image_path = f"reference_images/{persona.id}.png"
+        has_reference_image = os.path.exists(reference_image_path)
+        
+        # Build character-consistent prompt
+        if has_reference_image:
+            # For personas with reference images, use InstantID with prompt as-is
+            character_prompt = prompt
+            logger.info(f"Using InstantID for {persona.name} - prompt used as-is: {prompt}")
+        elif persona.image_style:
+            # Use image_style (which has visual details) + user prompt for other personas
             character_prompt = f"{prompt}, {persona.image_style}"
         else:
             # Fallback: use persona name if no image_style defined
@@ -341,12 +481,24 @@ async def generate_image(prompt: str, width: int = 512, height: int = 512, perso
             "error": None
         })
         
+        # Determine which workflow to use based on persona
+        workflow_path = None
+        if has_reference_image:
+            workflow_path = "workflows/instantid_template.json"
+            logger.info(f"Using InstantID workflow for {persona.name} persona")
+        else:
+            # Use default workflow for other personas
+            workflow_path = "workflows/sdxl_Character_profile_api.json"
+            logger.info(f"Using standard workflow for {persona.name} persona")
+        
         # Generate image
         image_data = await image_manager.generate_image(
             prompt=character_prompt,
             negative_prompt=negative_prompt,
             width=width,
-            height=height
+            height=height,
+            workflow_path=workflow_path,
+            persona_name=persona.id
         )
         
         _last_image_generation["success"] = True
@@ -358,7 +510,50 @@ async def generate_image(prompt: str, width: int = 512, height: int = 512, perso
         _last_image_generation["success"] = False
         _last_image_generation["error"] = str(e)
         logger.error(f"Image generation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Image generation failed: {str(e)}")
+        
+        # Try fallback strategies for API endpoint
+        try:
+            # Strategy 1: If InstantID failed, try standard workflow
+            if has_reference_image and "InstantID" in str(e):
+                logger.info("InstantID failed, attempting fallback to standard workflow...")
+                fallback_character_prompt = f"{prompt}, {persona.image_style}" if persona.image_style else f"{persona.name}, {prompt}"
+                
+                image_data = await image_manager.generate_image(
+                    prompt=fallback_character_prompt,
+                    negative_prompt=negative_prompt,
+                    width=width,
+                    height=height,
+                    workflow_path="workflows/sdxl_Character_profile_api.json",
+                    persona_name=persona.id
+                )
+                
+                _last_image_generation["success"] = True
+                logger.info("Fallback to standard workflow succeeded")
+                return Response(content=image_data, media_type="image/png")
+                
+            # Strategy 2: Try lower resolution
+            else:
+                logger.info("Attempting low-resolution fallback...")
+                simple_prompt = f"{persona.name}, {prompt}" if persona.image_style else prompt
+                
+                image_data = await image_manager.generate_image(
+                    prompt=simple_prompt,
+                    negative_prompt="(worst quality:1.5), (low quality:1.5)",
+                    width=512,
+                    height=512,
+                    workflow_path="workflows/sdxl_Character_profile_api.json",
+                    persona_name=persona.id
+                )
+                
+                _last_image_generation["success"] = True
+                logger.info("Low-resolution fallback succeeded")
+                return Response(content=image_data, media_type="image/png")
+                
+        except Exception as fallback_error:
+            logger.error(f"All fallback strategies failed: {fallback_error}")
+        
+        # If all strategies failed, return error
+        raise HTTPException(status_code=500, detail=f"Image generation failed after trying multiple strategies: {str(e)}")
 
 
 @app.get("/generate-voice")
@@ -410,6 +605,43 @@ async def generate_voice(text: str):
         raise HTTPException(status_code=500, detail=f"Voice generation failed: {str(e)}")
 
 
+@app.get("/debug/last-image-generation")
+async def get_last_image_generation_debug():
+    """
+    Get debug information about the last image generation attempt.
+    Useful for troubleshooting failed image generations.
+    """
+    global _last_image_generation
+    return {
+        "success": True,
+        "last_generation": _last_image_generation,
+        "comfyui_status": await check_comfyui_status(),
+        "available_workflows": [
+            "workflows/sdxl_Character_profile_api.json",
+            "workflows/instantid_template.json"
+        ],
+        "reference_images": [
+            f for f in os.listdir("reference_images") 
+            if f.endswith(('.png', '.jpg', '.jpeg'))
+        ] if os.path.exists("reference_images") else []
+    }
+
+async def check_comfyui_status():
+    """Helper function to check ComfyUI health"""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get("http://localhost:8188/system_stats")
+            return {
+                "available": response.status_code == 200,
+                "status_code": response.status_code
+            }
+    except Exception as e:
+        return {
+            "available": False,
+            "error": str(e)
+        }
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """
@@ -450,6 +682,16 @@ async def chat(request: ChatRequest):
     if ai_response.startswith(f"{persona.name}:"):
         ai_response = ai_response[len(f"{persona.name}:"):].strip()
     
+    # Remove reasoning/thinking tags that some models output
+    # Patterns: <think>...</think>, <thinking>...</thinking>, <reasoning>...</reasoning>
+    ai_response = re.sub(r'<think>.*?</think>', '', ai_response, flags=re.IGNORECASE | re.DOTALL)
+    ai_response = re.sub(r'<thinking>.*?</thinking>', '', ai_response, flags=re.IGNORECASE | re.DOTALL)
+    ai_response = re.sub(r'<reasoning>.*?</reasoning>', '', ai_response, flags=re.IGNORECASE | re.DOTALL)
+    ai_response = re.sub(r'<thought>.*?</thought>', '', ai_response, flags=re.IGNORECASE | re.DOTALL)
+    
+    # Clean up any extra whitespace left after removing tags
+    ai_response = re.sub(r'\n\s*\n\s*\n', '\n\n', ai_response).strip()
+    
     # Check if response contains image request
     has_image = False
     image_prompt = None
@@ -471,10 +713,19 @@ async def chat(request: ChatRequest):
                 logger.info("Image generation started - Ollama models will be unloaded")
                 
                 try:
-                    # Build character-consistent prompt using persona's visual style
-                    if persona.image_style:
-                        # Use image_style (which has visual details) + user prompt
-                        character_prompt = f"{image_prompt}, {persona.image_style}"
+                    # Check if persona has a reference image for InstantID 
+                    import os
+                    reference_image_path = f"reference_images/{persona.id}.png"
+                    has_reference_image = os.path.exists(reference_image_path)
+                    
+                    # Build character-consistent prompt
+                    if has_reference_image:
+                        # For personas with reference images, use InstantID with prompt as-is
+                        character_prompt = image_prompt
+                        logger.info(f"Using InstantID for {persona.name} - prompt used as-is: {image_prompt}")
+                    elif persona.image_style:
+                        # Use enhanced prompt builder to add proper weights for other personas
+                        character_prompt = enhance_image_prompt(image_prompt, persona.image_style)
                     else:
                         # Fallback: use persona name if no image_style defined
                         character_prompt = f"{persona.name}, {image_prompt}"
@@ -496,12 +747,24 @@ async def chat(request: ChatRequest):
                         "error": None
                     })
                     
+                    # Determine which workflow to use based on persona
+                    workflow_path = None
+                    if has_reference_image:
+                        workflow_path = "workflows/instantid_template.json"
+                        logger.info(f"Using InstantID workflow for {persona.name} persona")
+                    else:
+                        # Use default workflow for other personas
+                        workflow_path = "workflows/sdxl_Character_profile_api.json"
+                        logger.info(f"Using standard workflow for {persona.name} persona")
+                    
                     # Generate image (this will unload Ollama internally)
                     image_data = await image_manager.generate_image(
                         prompt=character_prompt,
                         negative_prompt=negative_prompt,
                         width=1024,
-                        height=1024
+                        height=1024,
+                        workflow_path=workflow_path,
+                        persona_name=persona.id
                     )
                     
                     _last_image_generation["success"] = True
@@ -527,7 +790,75 @@ async def chat(request: ChatRequest):
             logger.error(f"Image generation failed: {e}")
             _last_image_generation["success"] = False
             _last_image_generation["error"] = str(e)
-            # Continue without image
+            
+            # Try fallback strategies
+            fallback_success = False
+            
+            # Strategy 1: If InstantID failed, try standard workflow
+            if has_reference_image and "InstantID" in str(e):
+                logger.info("InstantID failed, attempting fallback to standard workflow...")
+                try:
+                    fallback_character_prompt = f"{persona.name}, {image_prompt}" if persona.image_style else f"{persona.name}, {image_prompt}"
+                    if persona.image_style:
+                        fallback_character_prompt = enhance_image_prompt(image_prompt, persona.image_style)
+                    
+                    image_data = await image_manager.generate_image(
+                        prompt=fallback_character_prompt,
+                        negative_prompt=negative_prompt,
+                        width=1024,
+                        height=1024,
+                        workflow_path="workflows/sdxl_Character_profile_api.json",
+                        persona_name=persona.id
+                    )
+                    
+                    filename = f"fallback_{persona.id}_{int(time.time())}.png"
+                    filepath = f"outputs/generated_images/{filename}"
+                    
+                    with open(filepath, "wb") as f:
+                        f.write(image_data)
+                    
+                    image_url = f"/outputs/generated_images/{filename}"
+                    fallback_success = True
+                    logger.info("Fallback to standard workflow succeeded")
+                    
+                except Exception as fallback_error:
+                    logger.error(f"Fallback generation also failed: {fallback_error}")
+            
+            # Strategy 2: If still failed, try lower resolution
+            if not fallback_success:
+                logger.info("Attempting low-resolution fallback...")
+                try:
+                    simple_prompt = f"{persona.name}, {image_prompt}"
+                    
+                    image_data = await image_manager.generate_image(
+                        prompt=simple_prompt,
+                        negative_prompt="(worst quality:1.5), (low quality:1.5)",
+                        width=512,
+                        height=512,
+                        workflow_path="workflows/sdxl_Character_profile_api.json",
+                        persona_name=persona.id
+                    )
+                    
+                    filename = f"lowres_{persona.id}_{int(time.time())}.png"
+                    filepath = f"outputs/generated_images/{filename}"
+                    
+                    with open(filepath, "wb") as f:
+                        f.write(image_data)
+                    
+                    image_url = f"/outputs/generated_images/{filename}"
+                    fallback_success = True
+                    logger.info("Low-resolution fallback succeeded")
+                    
+                except Exception as lowres_error:
+                    logger.error(f"Low-resolution fallback also failed: {lowres_error}")
+            
+            # If all fallbacks failed, modify the response to inform user
+            if not fallback_success:
+                error_message = "Sorry, I couldn't generate that image right now. The image generation system seems to be having issues. 😔"
+                
+                # Replace the [IMAGE:...] tag with error message
+                ai_response = re.sub(r'\[IMAGE:[^\]]+\]', error_message, ai_response)
+                logger.warning("All image generation strategies failed, continuing without image")
     
     # Store AI response in memory
     memory_manager.add_message(
@@ -575,6 +906,7 @@ async def list_personas():
             "image_style": persona.image_style,
             "temperature": persona.temperature,
             "max_tokens": persona.max_tokens,
+            "system_prompt": persona.system_prompt,
             "gender": persona.gender,
             "is_current": (persona.id == current_persona.id)
         })
@@ -592,6 +924,7 @@ async def list_personas():
             "image_style": current_persona.image_style,
             "temperature": current_persona.temperature,
             "max_tokens": current_persona.max_tokens,
+            "system_prompt": current_persona.system_prompt,
             "gender": current_persona.gender,
             "is_current": True
         }
@@ -623,6 +956,7 @@ async def get_persona(persona_id: str):
         "image_style": persona.image_style,
         "reference_image": persona.reference_image,
         "example_messages": persona.example_messages,
+        "system_prompt": persona.system_prompt,
         "gender": persona.gender,
         "is_current": (persona.id == persona_manager.current_persona_id)
     }
@@ -700,6 +1034,7 @@ async def create_persona_endpoint(request: CreatePersonaRequest):
             description=request.description,
             personality_traits=request.personality_traits,
             speaking_style=request.speaking_style,
+            system_prompt=request.system_prompt,
             temperature=request.temperature,
             max_tokens=request.max_tokens,
             voice=request.voice,
@@ -734,7 +1069,7 @@ async def create_persona_endpoint(request: CreatePersonaRequest):
 
 
 @app.put("/personas/{persona_id}")
-async def update_persona_endpoint(persona_id: str, request: CreatePersonaRequest):
+async def update_persona_endpoint(persona_id: str, request: UpdatePersonaRequest):
     """
     Update an existing persona.
     
@@ -747,6 +1082,8 @@ async def update_persona_endpoint(persona_id: str, request: CreatePersonaRequest
         persona = persona_manager.get_persona(persona_id)
         if not persona:
             raise HTTPException(status_code=404, detail=f"Persona '{persona_id}' not found")
+        
+        # Persona ID cannot be changed (comes from URL path)
         
         # Update persona fields
         persona.name = request.name
@@ -1012,6 +1349,151 @@ async def get_last_generation():
     """
     return _last_image_generation
 
+
+@app.get("/comfyui/status")
+async def get_comfyui_status():
+    """
+    Check if ComfyUI is running and accessible.
+    
+    Example:
+        curl http://localhost:8000/comfyui/status
+    """
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            response = await client.get("http://localhost:8188/system_stats")
+            if response.status_code == 200:
+                return {"status": "online", "service": "ComfyUI"}
+    except:
+        pass
+    return {"status": "offline", "service": "ComfyUI"}
+
+
+@app.get("/tts/health")
+async def get_tts_health():
+    """
+    Check if TTS service is running and accessible.
+    
+    Example:
+        curl http://localhost:8000/tts/health
+    """
+    try:
+        is_healthy = await coqui_tts_client.check_health()
+        if is_healthy:
+            return {"status": "online", "service": "TTS"}
+    except:
+        pass
+    return {"status": "offline", "service": "TTS"}
+
+
+@app.get("/comfyui/checkpoints")
+async def get_comfyui_checkpoints():
+    """
+    List available ComfyUI checkpoints.
+    
+    Example:
+        curl http://localhost:8000/comfyui/checkpoints
+    """
+    import os
+    import glob
+    
+    try:
+        checkpoint_dir = "/home/chris/.local/share/ComfyUI/checkpoints"
+        
+        if not os.path.exists(checkpoint_dir):
+            return {"checkpoints": [], "current": None, "error": "Checkpoint directory not found"}
+        
+        # Get all .safetensors and .ckpt files
+        checkpoint_files = []
+        for ext in ["*.safetensors", "*.ckpt"]:
+            checkpoint_files.extend(glob.glob(os.path.join(checkpoint_dir, ext)))
+        
+        # Extract just the filenames
+        checkpoints = [os.path.basename(f) for f in checkpoint_files]
+        checkpoints.sort()
+        
+        # Get current checkpoint from workflow
+        current_checkpoint = None
+        try:
+            import json
+            with open("workflows/character_generation.json", "r") as f:
+                workflow = json.load(f)
+                # Find the CheckpointLoaderSimple node (usually node "4")
+                for node_id, node_data in workflow.items():
+                    if node_data.get("class_type") == "CheckpointLoaderSimple":
+                        current_checkpoint = node_data["inputs"]["ckpt_name"]
+                        break
+        except Exception as e:
+            logger.warning(f"Could not read current checkpoint: {e}")
+        
+        return {
+            "checkpoints": checkpoints,
+            "current": current_checkpoint,
+            "count": len(checkpoints)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error listing checkpoints: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list checkpoints: {str(e)}")
+
+
+@app.post("/comfyui/checkpoint")
+async def set_comfyui_checkpoint(request: dict):
+    """
+    Set the active ComfyUI checkpoint.
+    
+    Example:
+        curl -X POST http://localhost:8000/comfyui/checkpoint \
+          -H "Content-Type: application/json" \
+          -d '{"checkpoint": "cyberrealisticPony_v140.safetensors"}'
+    """
+    import json
+    import os
+    
+    try:
+        checkpoint_name = request.get("checkpoint")
+        if not checkpoint_name:
+            raise HTTPException(status_code=400, detail="Checkpoint name is required")
+        
+        # Verify checkpoint exists
+        checkpoint_path = f"/home/chris/.local/share/ComfyUI/checkpoints/{checkpoint_name}"
+        if not os.path.exists(checkpoint_path):
+            raise HTTPException(status_code=404, detail=f"Checkpoint '{checkpoint_name}' not found")
+        
+        # Update workflow file
+        workflow_path = "workflows/character_generation.json"
+        with open(workflow_path, "r") as f:
+            workflow = json.load(f)
+        
+        # Find and update the CheckpointLoaderSimple node
+        updated = False
+        for node_id, node_data in workflow.items():
+            if node_data.get("class_type") == "CheckpointLoaderSimple":
+                old_checkpoint = node_data["inputs"]["ckpt_name"]
+                node_data["inputs"]["ckpt_name"] = checkpoint_name
+                updated = True
+                logger.info(f"Updated checkpoint: {old_checkpoint} → {checkpoint_name}")
+                break
+        
+        if not updated:
+            raise HTTPException(status_code=500, detail="Could not find CheckpointLoaderSimple node in workflow")
+        
+        # Save updated workflow
+        with open(workflow_path, "w") as f:
+            json.dump(workflow, f, indent=2)
+        
+        return {
+            "success": True,
+            "message": f"Checkpoint changed to {checkpoint_name}",
+            "checkpoint": checkpoint_name
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error setting checkpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to set checkpoint: {str(e)}")
+
+
 @app.post("/comfyui/restart")
 async def restart_comfyui():
     """
@@ -1263,18 +1745,34 @@ async def import_huggingface_model(request: dict):
 
 
 @app.get("/", response_class=HTMLResponse)
-async def root():
+async def root(request: Request):
     """
-    Serve the Web UI - Phase 6!
+    Serve the Web UI - Device-specific routing!
     """
+    # Detect mobile vs desktop from user agent
+    user_agent = request.headers.get("user-agent", "").lower()
+    is_mobile = any(device in user_agent for device in [
+        "mobile", "android", "iphone", "ipad", "blackberry", 
+        "windows phone", "opera mini", "iemobile"
+    ])
+    
+    # Choose appropriate template
+    template_path = "static/mobile/index.html" if is_mobile else "static/desktop/index.html"
+    fallback_path = "static/index.html"  # Fallback to original
+    
     try:
-        with open("static/index.html", "r") as f:
+        with open(template_path, "r") as f:
             return HTMLResponse(content=f.read())
     except FileNotFoundError:
-        return HTMLResponse(
-            content="<h1>Unicorn AI</h1><p>Web UI not found. Make sure static/index.html exists.</p>",
-            status_code=404
-        )
+        try:
+            # Fallback to original index.html
+            with open(fallback_path, "r") as f:
+                return HTMLResponse(content=f.read())
+        except FileNotFoundError:
+            return HTMLResponse(
+                content="<h1>Unicorn AI</h1><p>Web UI not found. Make sure template files exist.</p>",
+                status_code=404
+            )
 
 
 if __name__ == "__main__":

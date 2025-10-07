@@ -262,6 +262,7 @@ class UnicornAI {
         
         // Mobile menu
         this.mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        this.mobileOverlay = document.getElementById('mobileOverlay');
         this.sidebarToggle = document.getElementById('sidebarToggle');
     }
 
@@ -301,6 +302,7 @@ class UnicornAI {
         this.downloadModelBtn.addEventListener('click', () => this.downloadModel());
         document.getElementById('restartComfyuiBtn').addEventListener('click', () => this.restartComfyUI());
         document.getElementById('viewDebugBtn').addEventListener('click', () => this.viewDebugInfo());
+        document.getElementById('setCheckpointBtn').addEventListener('click', () => this.setCheckpoint());
         this.modelManagerModal.querySelector('.close-modal').addEventListener('click', () => this.closeModelManager());
         this.modelManagerModal.addEventListener('click', (e) => {
             if (e.target === this.modelManagerModal) {
@@ -337,8 +339,25 @@ class UnicornAI {
         this.createPersonaForm.addEventListener('submit', (e) => this.handleCreatePersona(e));
         
         // Mobile menu
-        this.mobileMenuBtn.addEventListener('click', () => this.toggleSidebar());
-        this.sidebarToggle.addEventListener('click', () => this.toggleSidebar());
+        if (this.mobileMenuBtn) {
+            this.mobileMenuBtn.addEventListener('click', () => this.toggleSidebar());
+        }
+        if (this.mobileOverlay) {
+            this.mobileOverlay.addEventListener('click', () => this.closeSidebar());
+        }
+        if (this.sidebarToggle) {
+            this.sidebarToggle.addEventListener('click', () => this.toggleSidebar());
+        }
+        
+        // Close sidebar when clicking on sidebar items (mobile)
+        if (this.sidebar) {
+            this.sidebar.addEventListener('click', (e) => {
+                // Close sidebar when clicking action buttons on mobile
+                if (window.innerWidth <= 768 && e.target.closest('.action-btn')) {
+                    setTimeout(() => this.closeSidebar(), 300);
+                }
+            });
+        }
         
         // Settings sliders
         document.getElementById('temperatureSetting').addEventListener('input', (e) => {
@@ -374,27 +393,76 @@ class UnicornAI {
         document.getElementById('personaMaxTokens').addEventListener('input', (e) => {
             document.getElementById('personaMaxTokensValue').textContent = e.target.value;
         });
+        
+        // Mobile-specific improvements
+        this.setupMobileHandling();
+    }
+    
+    setupMobileHandling() {
+        // Window resize handling for mobile
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 768) {
+                // Close mobile sidebar when switching to desktop
+                this.closeSidebar();
+            }
+        });
+        
+        // Prevent zoom on iOS double tap
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', (event) => {
+            const now = Date.now();
+            if (now - lastTouchEnd <= 300) {
+                event.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, false);
+        
+        // Handle mobile input focus (prevent zoom on iOS)
+        const inputs = document.querySelectorAll('input, textarea, select');
+        inputs.forEach(input => {
+            input.addEventListener('focus', () => {
+                if (window.innerWidth <= 768) {
+                    // Scroll input into view on mobile
+                    setTimeout(() => {
+                        input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, 300);
+                }
+            });
+        });
+        
+        // Better touch handling for buttons
+        const buttons = document.querySelectorAll('button, .btn');
+        buttons.forEach(button => {
+            button.addEventListener('touchstart', () => {
+                button.style.transform = 'scale(0.98)';
+            });
+            button.addEventListener('touchend', () => {
+                setTimeout(() => {
+                    button.style.transform = '';
+                }, 100);
+            });
+        });
     }
 
     // ===== System Status =====
     async checkSystemStatus() {
-        // Check Ollama
+        // Check Ollama (via API proxy)
         this.checkServiceStatus(
-            'http://localhost:11434/api/tags',
+            `${this.apiBase}/ollama/models`,
             'ollamaStatus',
             'Ollama'
         );
         
-        // Check ComfyUI
+        // Check ComfyUI (via API proxy)
         this.checkServiceStatus(
-            'http://localhost:8188/system_stats',
+            `${this.apiBase}/comfyui/status`,
             'comfyuiStatus',
             'ComfyUI'
         );
         
-        // Check TTS
+        // Check TTS (via API proxy)
         this.checkServiceStatus(
-            'http://localhost:5050/health',
+            `${this.apiBase}/tts/health`,
             'ttsStatus',
             'TTS'
         );
@@ -465,7 +533,8 @@ class UnicornAI {
 
     async loadAvailableModels() {
         try {
-            const response = await fetch('http://localhost:11434/api/tags');
+            // Use the API endpoint instead of direct Ollama connection (works remotely)
+            const response = await fetch(`${this.apiBase}/ollama/models`);
             const data = await response.json();
             
             const modelSelect = document.getElementById('personaModel');
@@ -554,6 +623,12 @@ class UnicornAI {
     }
 
     async switchPersona(personaId) {
+        if (!personaId || personaId === 'null' || personaId === 'undefined') {
+            console.error('Invalid persona ID:', personaId);
+            this.showError('Invalid persona ID');
+            return;
+        }
+        
         try {
             const response = await fetch(`${this.apiBase}/personas/${personaId}/activate`, {
                 method: 'POST'
@@ -676,6 +751,106 @@ class UnicornAI {
         }
     }
 
+    async retryLastMessage() {
+        // Find the last user message
+        let lastUserMessage = null;
+        for (let i = this.messages.length - 1; i >= 0; i--) {
+            if (this.messages[i].sender === 'user') {
+                lastUserMessage = this.messages[i].text;
+                break;
+            }
+        }
+
+        if (!lastUserMessage) {
+            this.showError('No previous message to retry');
+            return;
+        }
+
+        // Remove the last AI response(s) from display and array
+        const messagesToRemove = [];
+        for (let i = this.messages.length - 1; i >= 0; i--) {
+            if (this.messages[i].sender === 'ai') {
+                messagesToRemove.push(i);
+            } else {
+                break; // Stop at the first non-AI message
+            }
+        }
+
+        // Remove from array (in reverse order to maintain indices)
+        messagesToRemove.forEach(index => {
+            this.messages.splice(index, 1);
+        });
+
+        // Remove from DOM
+        const aiMessages = this.chatMessages.querySelectorAll('.message.ai');
+        const lastAiMessage = aiMessages[aiMessages.length - 1];
+        if (lastAiMessage) {
+            lastAiMessage.remove();
+        }
+
+        // Show typing indicator
+        this.showTyping(true);
+        this.sendBtn.disabled = true;
+
+        const startTime = Date.now();
+
+        try {
+            const response = await fetch(`${this.apiBase}/chat`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: lastUserMessage,
+                    persona_id: this.currentPersona.id,
+                    session_id: this.sessionId,
+                    temperature: this.settings.temperature,
+                    max_tokens: this.settings.maxTokens
+                })
+            });
+
+            if (!response.ok) throw new Error('Failed to get response');
+
+            const data = await response.json();
+            const responseTime = ((Date.now() - startTime) / 1000).toFixed(1);
+
+            // Update stats
+            this.updateStats(responseTime);
+
+            // Hide typing indicator
+            this.showTyping(false);
+
+            // Add AI response
+            const messageEl = this.addMessage('ai', data.response, {
+                hasImage: data.has_image,
+                imagePrompt: data.image_prompt,
+                imageUrl: data.image_url,
+                responseTime: responseTime,
+                model: data.model
+            });
+
+            // Handle voice mode
+            if (this.settings.voiceMode) {
+                await this.addAudioToMessage(messageEl, data.response);
+            }
+
+            // Play sound
+            if (this.settings.soundEffects) {
+                this.playSound('message');
+            }
+
+            // Save updated messages
+            this.saveMessages();
+
+        } catch (error) {
+            console.error('Error retrying message:', error);
+            this.showTyping(false);
+            this.showError('Failed to regenerate response. Please try again.');
+        } finally {
+            this.sendBtn.disabled = false;
+        }
+    }
+
     addMessage(sender, text, options = {}) {
         const message = {
             sender,
@@ -740,10 +915,11 @@ class UnicornAI {
                         </p>
                     </div>
                 ` : ''}
-                ${message.responseTime || message.model ? `
+                ${message.responseTime || message.model || !isUser ? `
                     <div class="message-meta">
                         ${message.responseTime ? `<span>⚡ ${message.responseTime}s</span>` : ''}
                         ${message.model ? `<span>🤖 ${message.model}</span>` : ''}
+                        ${!isUser ? `<button class="retry-button" onclick="window.chatManager.retryLastMessage()" title="Regenerate response">🔄 Retry</button>` : ''}
                     </div>
                 ` : ''}
             </div>
@@ -762,10 +938,12 @@ class UnicornAI {
     formatMessage(text) {
         // Basic formatting
         return text
+            .replace(/\[IMAGE:[^\]]+\]/gi, '') // Remove [IMAGE: ...] tags
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             .replace(/\*(.*?)\*/g, '<em>$1</em>')
             .replace(/\n/g, '<br>')
-            .replace(/`(.*?)`/g, '<code>$1</code>');
+            .replace(/`(.*?)`/g, '<code>$1</code>')
+            .trim();
     }
 
     addSystemMessage(text) {
@@ -836,7 +1014,7 @@ class UnicornAI {
                     <div class="welcome-message">
                         <div class="welcome-icon">🦄</div>
                         <h2>Welcome to Unicorn AI</h2>
-                        <p>Start chatting with ${this.currentPersona?.name || 'your AI companion'}!</p>
+                        <p>Start chatting with ${this.currentPersona?.name || 'someone'}!</p>
                     </div>
                 `;
                 return;
@@ -1258,6 +1436,18 @@ class UnicornAI {
     // ===== Utilities =====
     toggleSidebar() {
         this.sidebar.classList.toggle('active');
+        const overlay = document.getElementById('mobileOverlay');
+        if (overlay) {
+            overlay.classList.toggle('active');
+        }
+    }
+    
+    closeSidebar() {
+        this.sidebar.classList.remove('active');
+        const overlay = document.getElementById('mobileOverlay');
+        if (overlay) {
+            overlay.classList.remove('active');
+        }
     }
     
     // ===== Persona Creation =====
@@ -1272,6 +1462,7 @@ class UnicornAI {
         document.getElementById('personaTemperatureValue').textContent = '0.8';
         document.getElementById('personaMaxTokensValue').textContent = '150';
         document.querySelector('#createPersonaModal h2').textContent = 'Create Custom Persona';
+        document.getElementById('submitPersonaBtn').innerHTML = '<i class="fas fa-magic"></i> Create Persona';
     }
     
     async editCurrentPersona() {
@@ -1291,6 +1482,7 @@ class UnicornAI {
         document.getElementById('personaDescription').value = this.currentPersona.description;
         document.getElementById('personaTraits').value = this.currentPersona.personality_traits.join(', ');
         document.getElementById('personaSpeakingStyle').value = this.currentPersona.speaking_style;
+        document.getElementById('personaSystemPrompt').value = this.currentPersona.system_prompt || '';
         document.getElementById('personaModel').value = this.currentPersona.model || 'dolphin-mistral:latest';
         document.getElementById('personaVoice').value = this.currentPersona.voice;
         document.getElementById('personaGender').value = this.currentPersona.gender || '';
@@ -1301,6 +1493,7 @@ class UnicornAI {
         document.getElementById('personaMaxTokensValue').textContent = this.currentPersona.max_tokens;
         
         document.querySelector('#createPersonaModal h2').textContent = 'Edit Persona';
+        document.getElementById('submitPersonaBtn').innerHTML = '<i class="fas fa-save"></i> Update Persona';
     }
     
     closeCreatePersona() {
@@ -1308,6 +1501,7 @@ class UnicornAI {
         this.editingPersonaId = null;
         document.getElementById('personaId').disabled = false;
         document.querySelector('#createPersonaModal h2').textContent = 'Create Custom Persona';
+        document.getElementById('submitPersonaBtn').innerHTML = '<i class="fas fa-magic"></i> Create Persona';
     }
     
     async handleCreatePersona(e) {
@@ -1320,6 +1514,7 @@ class UnicornAI {
         const descriptionEl = form.querySelector('#personaDescription');
         const traitsEl = form.querySelector('#personaTraits');
         const speakingStyleEl = form.querySelector('#personaSpeakingStyle');
+        const systemPromptEl = form.querySelector('#personaSystemPrompt');
         const modelEl = form.querySelector('#personaModel');
         const voiceEl = form.querySelector('#personaVoice');
         const imageStyleEl = form.querySelector('#personaImageStyle');
@@ -1327,7 +1522,7 @@ class UnicornAI {
         const maxTokensEl = form.querySelector('#personaMaxTokens');
         
         // Check if all elements exist
-        if (!personaIdEl || !nameEl || !descriptionEl || !traitsEl || !speakingStyleEl || !modelEl || !voiceEl || !temperatureEl || !maxTokensEl) {
+        if (!personaIdEl || !nameEl || !descriptionEl || !traitsEl || !speakingStyleEl || !systemPromptEl || !modelEl || !voiceEl || !temperatureEl || !maxTokensEl) {
             this.showError('Form elements not found. Please refresh the page.');
             console.error('Missing form elements:', {
                 personaId: !!personaIdEl,
@@ -1335,6 +1530,7 @@ class UnicornAI {
                 description: !!descriptionEl,
                 traits: !!traitsEl,
                 speakingStyle: !!speakingStyleEl,
+                systemPrompt: !!systemPromptEl,
                 voice: !!voiceEl,
                 imageStyle: !!imageStyleEl,
                 temperature: !!temperatureEl,
@@ -1348,6 +1544,7 @@ class UnicornAI {
         const description = descriptionEl.value.trim();
         const traitsInput = traitsEl.value.trim();
         const speakingStyle = speakingStyleEl.value.trim();
+        const systemPrompt = systemPromptEl.value.trim();
         const model = modelEl.value;
         const voice = voiceEl.value;
         const gender = document.getElementById('personaGender').value;
@@ -1355,8 +1552,11 @@ class UnicornAI {
         const temperature = parseFloat(temperatureEl.value);
         const maxTokens = parseInt(maxTokensEl.value);
         
-        // Validate ID format
-        if (!/^[a-z0-9-]+$/.test(personaId)) {
+        // Determine if we're editing or creating
+        const isEditing = !!this.editingPersonaId;
+        
+        // Validate ID format (only for creation, not editing)
+        if (!isEditing && (!personaId || !/^[a-z0-9-]+$/.test(personaId))) {
             this.showError('Persona ID must contain only lowercase letters, numbers, and hyphens');
             return;
         }
@@ -1370,30 +1570,37 @@ class UnicornAI {
         
         // Create or update persona
         try {
-            const isEditing = !!this.editingPersonaId;
             const url = isEditing 
                 ? `${this.apiBase}/personas/${this.editingPersonaId}` 
                 : `${this.apiBase}/personas/create`;
             const method = isEditing ? 'PUT' : 'POST';
+            
+            // Prepare request body - only include id for creation, not updates
+            const requestBody = {
+                name: name,
+                description: description,
+                personality_traits: traits,
+                speaking_style: speakingStyle,
+                system_prompt: systemPrompt,
+                model: model,
+                voice: voice,
+                gender: gender || null,
+                image_style: imageStyle,
+                temperature: temperature,
+                max_tokens: maxTokens
+            };
+            
+            // Only add ID for creation, not updates
+            if (!isEditing) {
+                requestBody.id = personaId;
+            }
             
             const response = await fetch(url, {
                 method: method,
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    id: personaId,
-                    name: name,
-                    description: description,
-                    personality_traits: traits,
-                    speaking_style: speakingStyle,
-                    model: model,
-                    voice: voice,
-                    gender: gender || null,
-                    image_style: imageStyle,
-                    temperature: temperature,
-                    max_tokens: maxTokens
-                })
+                body: JSON.stringify(requestBody)
             });
             
             if (!response.ok) {
@@ -1409,11 +1616,21 @@ class UnicornAI {
             // Reload personas
             await this.loadPersonas();
             
-            // Switch to new persona
-            await this.switchPersona(personaId);
+            // For updates, reload personas and update display without switching
+            // For creation, switch to the new persona
+            if (isEditing) {
+                // Just reload personas to refresh the display
+                await this.loadPersonas();
+            } else {
+                // Switch to newly created persona
+                if (personaId && personaId !== 'null') {
+                    await this.switchPersona(personaId);
+                }
+            }
             
-            // Show success
-            this.addSystemMessage(`✨ Created new persona: ${name}!`);
+            // Show success message
+            const action = isEditing ? 'Updated' : 'Created';
+            this.addSystemMessage(`✨ ${action} persona: ${name}!`);
             
             if (this.settings.soundEffects) {
                 this.playSound('message');
@@ -1503,6 +1720,7 @@ class UnicornAI {
         this.modelManagerModal.classList.add('active');
         this.loadPopularModels();
         await this.loadInstalledModels();
+        await this.loadComfyUICheckpoints();
     }
 
     closeModelManager() {
@@ -1651,10 +1869,21 @@ class UnicornAI {
                 body: JSON.stringify({ model: modelName })
             });
             
-            if (!response.ok) throw new Error('Failed to start download');
+            if (!response.ok) {
+                const errorText = await response.text();
+                let errorMessage = 'Failed to start download';
+                try {
+                    const errorData = JSON.parse(errorText);
+                    errorMessage = errorData.detail || errorData.error || errorMessage;
+                } catch {
+                    errorMessage = errorText || errorMessage;
+                }
+                throw new Error(errorMessage);
+            }
             
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
+            let hasError = false;
             
             while (true) {
                 const { done, value } = await reader.read();
@@ -1667,6 +1896,15 @@ class UnicornAI {
                     if (line.startsWith('data: ')) {
                         try {
                             const data = JSON.parse(line.substring(6));
+                            
+                            // Check for errors from Ollama
+                            if (data.error) {
+                                hasError = true;
+                                statusEl.textContent = '❌ Download failed';
+                                detailsEl.textContent = data.error;
+                                this.showError('Ollama error: ' + data.error);
+                                break;
+                            }
                             
                             if (data.status) {
                                 statusEl.textContent = data.status;
@@ -1695,10 +1933,12 @@ class UnicornAI {
                                 }, 3000);
                             }
                         } catch (e) {
-                            console.error('Error parsing progress:', e);
+                            console.error('Error parsing progress:', e, 'Line:', line);
                         }
                     }
                 }
+                
+                if (hasError) break;
             }
             
         } catch (error) {
@@ -2094,9 +2334,106 @@ ${data.error}</div>
     closeDebugModal() {
         document.getElementById('debugModal').style.display = 'none';
     }
+
+    async loadComfyUICheckpoints() {
+        try {
+            const response = await fetch(`${this.apiBase}/comfyui/checkpoints`);
+            if (!response.ok) {
+                throw new Error('Failed to load checkpoints');
+            }
+
+            const data = await response.json();
+            const checkpointSelector = document.getElementById('checkpointSelector');
+            const currentCheckpointSpan = document.getElementById('currentCheckpoint');
+            
+            // Clear existing options
+            checkpointSelector.innerHTML = '';
+            
+            if (data.checkpoints && data.checkpoints.length > 0) {
+                // Add checkpoints to dropdown
+                data.checkpoints.forEach(checkpoint => {
+                    const option = document.createElement('option');
+                    option.value = checkpoint;
+                    option.textContent = checkpoint;
+                    if (checkpoint === data.current) {
+                        option.selected = true;
+                    }
+                    checkpointSelector.appendChild(option);
+                });
+                
+                // Update current checkpoint display
+                currentCheckpointSpan.textContent = data.current || 'None';
+            } else {
+                // No checkpoints found
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'No checkpoints found';
+                checkpointSelector.appendChild(option);
+                currentCheckpointSpan.textContent = 'None found';
+            }
+            
+        } catch (error) {
+            console.error('Error loading checkpoints:', error);
+            const checkpointSelector = document.getElementById('checkpointSelector');
+            const currentCheckpointSpan = document.getElementById('currentCheckpoint');
+            
+            checkpointSelector.innerHTML = '<option value="">Error loading checkpoints</option>';
+            currentCheckpointSpan.textContent = 'Error loading';
+            this.showError('Failed to load ComfyUI checkpoints: ' + error.message);
+        }
+    }
+
+    async setCheckpoint() {
+        const checkpointSelector = document.getElementById('checkpointSelector');
+        const selectedCheckpoint = checkpointSelector.value;
+        
+        if (!selectedCheckpoint) {
+            this.showError('Please select a checkpoint');
+            return;
+        }
+        
+        const setCheckpointBtn = document.getElementById('setCheckpointBtn');
+        const originalText = setCheckpointBtn.innerHTML;
+        
+        try {
+            setCheckpointBtn.disabled = true;
+            setCheckpointBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Setting...';
+            
+            const response = await fetch(`${this.apiBase}/comfyui/checkpoint`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    checkpoint: selectedCheckpoint
+                })
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Failed to set checkpoint');
+            }
+            
+            const result = await response.json();
+            
+            // Update current checkpoint display
+            document.getElementById('currentCheckpoint').textContent = selectedCheckpoint;
+            
+            this.showSuccess(`Checkpoint changed to: ${selectedCheckpoint}`);
+            
+        } catch (error) {
+            console.error('Error setting checkpoint:', error);
+            this.showError('Failed to set checkpoint: ' + error.message);
+        } finally {
+            setCheckpointBtn.disabled = false;
+            setCheckpointBtn.innerHTML = originalText;
+        }
+    }
 }
 
 // Initialize the app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     window.unicornAI = new UnicornAI();
+    // Make chatManager globally accessible for retry button
+    window.chatManager = window.unicornAI;
 });

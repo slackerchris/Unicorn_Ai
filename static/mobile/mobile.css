@@ -1,0 +1,432 @@
+/* ===== Mobile-Specific Styles ===== */
+
+/* Hide desktop elements on mobile */
+.sidebar-toggle {
+    display: none !important;
+}
+
+body {
+    overflow: auto;
+}
+
+/* ===== Mobile Header ===== */
+.mobile-header {
+    display: block;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--bg-dark);
+    border-bottom: 1px solid var(--border-color);
+    padding: 1rem;
+}
+
+.mobile-header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.mobile-menu-btn {
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 6px;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mobile-menu-btn:hover {
+    background: var(--bg-lighter);
+}
+
+.mobile-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* ===== Mobile Overlay ===== */
+.mobile-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 99;
+}
+
+.mobile-overlay.active {
+    display: block;
+}
+
+/* ===== App Container ===== */
+.app-container {
+    height: auto;
+    min-height: 100vh;
+}
+
+/* ===== Sidebar (Mobile) ===== */
+.sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    z-index: 100;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    width: 280px;
+    background: var(--bg-dark);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+.sidebar.active {
+    transform: translateX(0);
+}
+
+.sidebar-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.sidebar-header h1 {
+    font-size: 1.5rem;
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* ===== Persona Section (Mobile) ===== */
+.persona-section {
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.persona-section h3 {
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    letter-spacing: 0.05em;
+}
+
+.persona-selector-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.persona-select-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.persona-select {
+    flex: 1;
+    padding: 12px;
+    background: var(--bg-light);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 16px; /* Prevents zoom on iOS */
+}
+
+.edit-persona-btn,
+.delete-persona-btn {
+    padding: 12px;
+    background: var(--bg-light);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 44px;
+    min-height: 44px;
+}
+
+.edit-persona-btn:hover {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+}
+
+.delete-persona-btn:hover {
+    background: var(--error-color);
+    border-color: var(--error-color);
+    color: white;
+}
+
+/* ===== Chat Sessions (Mobile) ===== */
+.sessions-section {
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    flex: 1;
+    overflow-y: auto;
+}
+
+.sessions-section h3 {
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    letter-spacing: 0.05em;
+}
+
+/* ===== Actions Section (Mobile) ===== */
+.actions-section {
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.actions-section h3 {
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    letter-spacing: 0.05em;
+}
+
+.action-btn {
+    min-height: 44px; /* iOS touch target */
+    font-size: 16px; /* Prevents zoom on iOS */
+}
+
+/* ===== Main Content (Mobile) ===== */
+.main-content {
+    margin-left: 0;
+    width: 100%;
+}
+
+/* ===== Chat Container (Mobile) ===== */
+.chat-container {
+    height: auto;
+    min-height: calc(100vh - 60px);
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-messages {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    padding-bottom: 120px;
+    flex: 1;
+}
+
+.typing-indicator {
+    display: none;
+    padding: 16px;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+/* ===== Chat Input (Mobile) ===== */
+.chat-input-container {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--bg-dark);
+    border-top: 1px solid var(--border-color);
+    z-index: 10;
+    padding: 1rem;
+}
+
+.chat-input-row {
+    display: flex;
+    gap: 0.75rem;
+    align-items: end;
+}
+
+.chat-input {
+    flex: 1;
+    padding: 12px 16px;
+    background: var(--bg-light);
+    border: 1px solid var(--border-color);
+    border-radius: 24px;
+    color: var(--text-primary);
+    resize: none;
+    min-height: 44px; /* iOS touch target */
+    max-height: 120px;
+    font-family: inherit;
+    font-size: 16px; /* Prevents zoom on iOS */
+}
+
+.chat-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+}
+
+.input-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.input-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    border: none;
+    border-radius: 50%;
+    background: var(--primary-color);
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    font-size: 1rem;
+}
+
+.input-btn:hover {
+    background: var(--primary-hover);
+}
+
+.input-btn:disabled {
+    background: var(--bg-lighter);
+    color: var(--text-secondary);
+    cursor: not-allowed;
+}
+
+/* ===== Mobile Message Styles ===== */
+.message {
+    padding: 16px;
+}
+
+.message-content {
+    max-width: calc(100% - 52px);
+}
+
+.message-text {
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.message-actions {
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.message-action-btn {
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 1rem;
+}
+
+.message-time {
+    font-size: 0.75rem;
+}
+
+/* ===== Mobile Modal Optimizations ===== */
+.modal-content {
+    width: 95%;
+    max-width: none;
+    margin: 10px;
+    max-height: 90vh;
+}
+
+.form-input,
+.form-select,
+.form-textarea {
+    font-size: 16px; /* Prevents zoom on iOS */
+    padding: 12px;
+}
+
+/* ===== Touch and Scroll Optimizations ===== */
+.sidebar {
+    -webkit-overflow-scrolling: touch;
+}
+
+.chat-messages {
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent iOS bounce scrolling on body */
+body {
+    -webkit-overflow-scrolling: touch;
+}
+
+/* ===== Session Items (Mobile) ===== */
+.session-item {
+    padding: 16px 12px;
+    margin-bottom: 8px;
+    min-height: 44px;
+}
+
+.session-name {
+    font-size: 1rem;
+}
+
+.session-meta {
+    font-size: 0.8rem;
+    margin-top: 4px;
+}
+
+.session-delete {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px;
+}
+
+/* ===== Stats Section (Mobile) ===== */
+.stats-section {
+    padding: 1.5rem;
+    margin-top: auto;
+}
+
+.stats-section h3 {
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    letter-spacing: 0.05em;
+}
+
+.stat-item {
+    padding: 12px 0;
+}
+
+.system-status {
+    font-size: 0.875rem;
+}
+
+/* ===== Landscape Optimizations ===== */
+@media screen and (orientation: landscape) and (max-height: 500px) {
+    .mobile-header {
+        padding: 0.5rem 1rem;
+    }
+    
+    .mobile-title {
+        font-size: 1.1rem;
+    }
+    
+    .chat-input-container {
+        padding: 0.75rem;
+    }
+    
+    .chat-input {
+        min-height: 40px;
+    }
+    
+    .input-btn {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+    }
+}

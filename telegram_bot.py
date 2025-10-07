@@ -85,7 +85,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.info(f"User {user.id} ({user.first_name}) started the bot")
     
-    welcome_message = f"""👋 Hi {user.first_name}! I'm {PERSONA_NAME}, your AI companion.
+    welcome_message = f"""👋 Hi {user.first_name}! I'm {PERSONA_NAME}!
 
 I'm here to chat, listen, and keep you company. Just send me a message and I'll respond!
 
